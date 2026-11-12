@@ -20,9 +20,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.giracle.android.ui.common.TestTags
 import com.giracle.android.data.model.Message
 import com.giracle.android.data.model.User
 import com.giracle.android.data.net.UploadFile
@@ -250,7 +252,7 @@ fun Composer(
                 }
                 TextField(
                     value = value, onValueChange = { value = it },
-                    modifier = Modifier.weight(1f).heightIn(max = 180.dp).onPreviewKeyEvent { e ->
+                    modifier = Modifier.weight(1f).heightIn(max = 180.dp).testTag(TestTags.COMPOSER_INPUT).onPreviewKeyEvent { e ->
                         // ハードウェアキーボード: Enter で送信 (設定 ON 時)、Shift+Enter で改行
                         if (settings.sendWithEnter && e.type == KeyEventType.KeyDown && e.key == Key.Enter && !e.isShiftPressed) { submit(); true } else false
                     },
@@ -259,9 +261,9 @@ fun Composer(
                     colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
                     supportingText = if (tooLong) ({ Text("${text.length} / ${server.messageMaxLength} 文字", color = MaterialTheme.colorScheme.error) }) else null,
                 )
-                IconButton(onClick = ::submit, enabled = canSend) {
+                IconButton(onClick = ::submit, enabled = canSend, modifier = Modifier.testTag(TestTags.COMPOSER_SEND)) {
                     if (sending || uploading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else Icon(if (editing != null) Icons.Default.Edit else Icons.Default.Send, if (editing != null) "保存" else "送信")
+                    else Icon(if (editing != null) Icons.Default.Edit else Icons.AutoMirrored.Filled.Send, if (editing != null) "保存" else "送信")
                 }
             }
         }

@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,8 @@ import com.giracle.android.ui.channel.ChannelScreen
 import com.giracle.android.ui.channel.ChannelSettingsScreen
 import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.LocalStore
+import com.giracle.android.ui.common.TestTags
+import com.giracle.android.ui.common.exposeTestTags
 import com.giracle.android.ui.home.HomeScreen
 import com.giracle.android.ui.inbox.InboxScreen
 import com.giracle.android.ui.login.LoginScreen
@@ -65,13 +68,14 @@ import kotlinx.coroutines.launch
 fun Root(graph: AppGraph, pendingOpen: MutableState<Pair<String, String?>?>) {
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
     GiracleTheme(theme = settings.theme, fontScale = settings.fontScale) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        // testTag を resource-id として外から見えるようにする (D-016)
+        Surface(Modifier.fillMaxSize().exposeTestTags(), color = MaterialTheme.colorScheme.background) {
             val phase by graph.phase.collectAsStateWithLifecycle()
             val store by graph.storeFlow.collectAsStateWithLifecycle()
             CompositionLocalProvider(LocalGraph provides graph, LocalStore provides store) {
                 when (val p = phase) {
                     AppPhase.Starting -> Unit
-                    AppPhase.SignedOut -> LoginScreen()
+                    AppPhase.SignedOut -> Box(Modifier.fillMaxSize().testTag(TestTags.SCREEN_LOGIN)) { LoginScreen() }
                     is AppPhase.SignedIn -> SignedIn(p, graph, pendingOpen)
                 }
             }
@@ -122,22 +126,36 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
                 // 画面ごとに状態 (スクロール位置など) を保つため、キーを付けて描く
                 val screen = nav.current
                 androidx.compose.runtime.key(screen.stableKey()) {
-                    when (screen) {
-                        Screen.Home -> HomeScreen(loading = !p.ready)
-                        is Screen.Channel -> ChannelScreen(screen.channelId, screen.messageId)
-                        is Screen.ChannelSettings -> ChannelSettingsScreen(screen.channelId)
-                        Screen.Inbox -> InboxScreen()
-                        is Screen.Search -> SearchScreen(screen.channelId, screen.userId)
-                        Screen.Members -> MembersScreen()
-                        Screen.ChannelBrowser -> ChannelBrowserScreen()
-                        Screen.Settings -> SettingsScreen()
-                        Screen.ManageServer -> ManageServerScreen()
+                    Box(Modifier.fillMaxSize().testTag(screen.testTag())) {
+                        when (screen) {
+                            Screen.Home -> HomeScreen(loading = !p.ready)
+                            is Screen.Channel -> ChannelScreen(screen.channelId, screen.messageId)
+                            is Screen.ChannelSettings -> ChannelSettingsScreen(screen.channelId)
+                            Screen.Inbox -> InboxScreen()
+                            is Screen.Search -> SearchScreen(screen.channelId, screen.userId)
+                            Screen.Members -> MembersScreen()
+                            Screen.ChannelBrowser -> ChannelBrowserScreen()
+                            Screen.Settings -> SettingsScreen()
+                            Screen.ManageServer -> ManageServerScreen()
+                        }
                     }
                 }
             }
             NoticeBanner(store.notices, nav)
         }
     }
+}
+
+private fun Screen.testTag(): String = when (this) {
+    Screen.Home -> TestTags.SCREEN_HOME
+    is Screen.Channel -> TestTags.SCREEN_CHANNEL
+    is Screen.ChannelSettings -> TestTags.SCREEN_CHANNEL_SETTINGS
+    Screen.Inbox -> TestTags.SCREEN_INBOX
+    is Screen.Search -> TestTags.SCREEN_SEARCH
+    Screen.Members -> TestTags.SCREEN_MEMBERS
+    Screen.ChannelBrowser -> TestTags.SCREEN_CHANNEL_BROWSER
+    Screen.Settings -> TestTags.SCREEN_SETTINGS
+    Screen.ManageServer -> TestTags.SCREEN_MANAGE_SERVER
 }
 
 private fun Screen.stableKey(): String = when (this) {

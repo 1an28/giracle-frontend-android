@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,6 +75,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.giracle.android.ui.common.exposeTestTags
+import com.giracle.android.ui.common.TestTags
 import com.giracle.android.data.ChatStore
 import com.giracle.android.data.model.FileAttached
 import com.giracle.android.data.model.Message
@@ -226,7 +229,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
                             Text(channel?.name ?: "…", maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
                         }
                         if (!channel?.description.isNullOrBlank()) {
-                            Text(channel!!.description, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(channel.description, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 },
@@ -250,7 +253,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
                 } else {
                     val messages = history.messages
                     val before = readBefore[channelId]
-                    LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize().testTag(TestTags.CHANNEL_MESSAGES)) {
                         if (!history.atEnd) item(key = "newer", contentType = "loader") { Loader() }
                         itemsIndexed(messages, key = { _, m -> m.id }, contentType = { _, m -> if (m.isSystemMessage) "sys" else "msg" }) { i, m ->
                             val older = messages.getOrNull(i + 1)
@@ -305,16 +308,16 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     actionsFor?.let { m ->
         ModalBottomSheet(onDismissRequest = { actionsFor = null }) {
             val u = rememberUser(m.userId)
-            Column(Modifier.padding(bottom = 24.dp)) {
+            Column(Modifier.exposeTestTags().testTag(TestTags.MESSAGE_ACTIONS).padding(bottom = 24.dp)) {
                 Text("${u?.name ?: ""} ・ ${fullTime(m.createdAt)}", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // よく使うリアクション
                 Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     val quick = remember { (RecentEmoji.get(ctx) + listOf("thumbsup", "heart", "joy", "eyes", "pray", "tada")).distinct().take(6) }
                     for (code in quick) Box(Modifier.size(44.dp).clickable { cb.onToggleReaction(m, code); RecentEmoji.push(ctx, code); actionsFor = null }, contentAlignment = Alignment.Center) { EmojiView(code, 28.dp) }
-                    Box(Modifier.size(44.dp).clickable { pickerFor = m; actionsFor = null }, contentAlignment = Alignment.Center) { Icon(AppIcons.Mood, "絵文字を選ぶ") }
+                    Box(Modifier.size(44.dp).testTag(TestTags.MESSAGE_ACTIONS_EMOJI_PICKER).clickable { pickerFor = m; actionsFor = null }, contentAlignment = Alignment.Center) { Icon(AppIcons.Mood, "絵文字を選ぶ") }
                 }
                 HorizontalDivider()
-                if (joined) Action(AppIcons.Reply, "返信") { replyTo = m; editing = null; actionsFor = null }
+                if (joined) Action(AppIcons.Reply, "返信", tag = TestTags.MESSAGE_ACTIONS_REPLY) { replyTo = m; editing = null; actionsFor = null }
                 Action(AppIcons.Link, "リンクをコピー") {
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("link", "&<${m.channelId}:${m.id}>"))) }
                     ctx.toast("リンクをコピーしました"); actionsFor = null
@@ -330,7 +333,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     }
     pickerFor?.let { m ->
         ModalBottomSheet(onDismissRequest = { pickerFor = null }) {
-            EmojiPicker { code ->
+            EmojiPicker(Modifier.exposeTestTags()) { code ->
                 val mine = m.reactionSummary.count { it.includingYou }
                 val already = m.reactionSummary.any { it.emojiCode == code && it.includingYou }
                 if (!already && mine >= 10) ctx.toast("同一ユーザーによるリアクションは10個までです。")
@@ -357,7 +360,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     imageUrl?.let { ImageViewer(it) { imageUrl = null } }
     expanded?.let { m ->
         Dialog(onDismissRequest = { expanded = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxSize().padding(12.dp), shape = MaterialTheme.shapes.large) {
+            Surface(Modifier.fillMaxSize().exposeTestTags().testTag(TestTags.LONG_TEXT_DIALOG).padding(12.dp), shape = MaterialTheme.shapes.large) {
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Avatar(m.userId, 32.dp)
@@ -380,12 +383,12 @@ private fun Loader() {
 }
 
 @Composable
-private fun Action(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
+private fun Action(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, danger: Boolean = false, tag: String? = null, onClick: () -> Unit) {
     val c = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
     ListItem(
         headlineContent = { Text(label, color = c) },
         leadingContent = { Icon(icon, null, tint = c) },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.then(if (tag != null) Modifier.testTag(tag) else Modifier).clickable(onClick = onClick),
     )
 }
 

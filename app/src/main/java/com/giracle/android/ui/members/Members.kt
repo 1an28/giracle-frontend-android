@@ -187,7 +187,7 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
                     Text(if (userId in online) "オンライン" else "オフライン", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (!u?.selfIntroduction.isNullOrBlank()) Text(u!!.selfIntroduction, Modifier.padding(horizontal = 16.dp))
+            if (!u?.selfIntroduction.isNullOrBlank()) Text(u.selfIntroduction, Modifier.padding(horizontal = 16.dp))
             bot?.let { b ->
                 val creator = rememberUser(b.createdBy)
                 Text("作成者: ${creator?.displayName ?: "…"} ・ ${if (b.isApproved) "承認済み" else "未承認"}", Modifier.padding(16.dp, 8.dp), style = MaterialTheme.typography.bodySmall)
