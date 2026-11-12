@@ -1,0 +1,607 @@
+package com.giracle.android.data
+
+import android.util.Log
+import androidx.compose.runtime.Immutable
+import com.giracle.android.data.model.*
+import com.giracle.android.data.net.ApiException
+import com.giracle.android.data.net.AppJson
+import com.giracle.android.data.net.GiracleApi
+import com.giracle.android.data.net.WsClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+
+/** 1 チャンネル分の履歴。messages は新しい順 (index 0 が最新) */
+@Immutable
+data class HistoryState(
+    val messages: List<Message> = emptyList(),
+    val atTop: Boolean = false,
+    val atEnd: Boolean = false,
+    val loadingOlder: Boolean = false,
+    val loadingNewer: Boolean = false,
+    /** 初回読み込みが終わったか */
+    val loaded: Boolean = false,
+    /** 変更の世代。スクロール位置の調整などに使う */
+    val version: Int = 0,
+)
+
+/** アプリ内通知 (画面上部のバナーや Android 通知に使う) */
+data class InAppNotice(val title: String, val body: String, val channelId: String?, val messageId: String?)
+
+/**
+ * ログイン後の状態をすべて持つストア。
+ * Web 版の stores/ 以下と WS/ 以下 をまとめたもの。
+ *
+ * 性能上の工夫:
+ * - チャンネルごとに別の StateFlow を持ち、表示中のチャンネルだけが再描画される
+ * - ユーザー情報は必要になったときに 1 回だけ取りに行く (同時要求はまとめる)
+ * - JSON 解析と状態計算は呼び出し側のディスパッチャ (Default) で行う
+ */
+class ChatStore(
+    private val api: GiracleApi,
+    private val ws: WsClient,
+    private val prefs: Prefs,
+    private val scope: CoroutineScope,
+) {
+    val me = MutableStateFlow<User?>(null)
+    val serverConfig = MutableStateFlow(ServerConfig())
+    val channels = MutableStateFlow<List<Channel>>(emptyList())
+    val users = MutableStateFlow<Map<String, User>>(emptyMap())
+    val roles = MutableStateFlow<Map<String, Role>>(emptyMap())
+    val customEmoji = MutableStateFlow<List<CustomEmoji>>(emptyList())
+    val online = MutableStateFlow<Set<String>>(emptySet())
+    val hasNew = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val inbox = MutableStateFlow<List<InboxItem>>(emptyList())
+    val readTimes = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** 「新着」線の位置に使う、チャンネルを開いた時点の既読時刻 */
+    val readTimesBefore = MutableStateFlow<Map<String, String>>(emptyMap())
+    val imageSizes = MutableStateFlow<Map<String, ImageSize>>(emptyMap())
+    val notificationConfig = MutableStateFlow(NotificationConfig())
+    val mutedChannels = MutableStateFlow<Set<String>>(emptySet())
+
+    /** 現在開いているチャンネル (通知・既読の判定用) */
+    @Volatile var currentChannelId: String? = null
+    @Volatile var appInForeground: Boolean = true
+
+    private val _notices = MutableSharedFlow<InAppNotice>(extraBufferCapacity = 16)
+    val notices: SharedFlow<InAppNotice> = _notices
+
+    /** セッションが無効になった (ログアウトさせる) */
+    val sessionExpired = MutableStateFlow(false)
+
+    private val histories = ConcurrentHashMap<String, MutableStateFlow<HistoryState>>()
+    private val historyLocks = ConcurrentHashMap<String, Mutex>()
+    private val userRequests = ConcurrentHashMap<String, Job>()
+    private var wsJob: Job? = null
+
+    fun history(channelId: String): StateFlow<HistoryState> =
+        histories.getOrPut(channelId) { MutableStateFlow(HistoryState()) }
+
+    private fun hist(channelId: String) = histories.getOrPut(channelId) { MutableStateFlow(HistoryState()) }
+    private fun lock(channelId: String) = historyLocks.getOrPut(channelId) { Mutex() }
+
+    // ------------------------------------------------------------------
+    // 初期読み込み
+    // ------------------------------------------------------------------
+
+    /** ログイン直後・起動時に呼ぶ。Web 版 InitLoad と同じものを並列に取る */
+    suspend fun initialLoad(userId: String) = coroutineScope {
+        val tasks = listOf(
+            async { me.value = api.userInfo(userId).also { putUser(it) } },
+            async { serverConfig.value = api.serverConfig() },
+            async { channels.value = api.channelList() },
+            async { roles.value = api.roles().associateBy { it.id } },
+            async {
+                val rt = api.readTimes().associate { it.channelId to it.readTime }
+                readTimes.value = rt
+                readTimesBefore.value = rt
+            },
+            async { hasNew.value = api.hasNew() },
+            async { inbox.value = api.inbox() },
+            async { customEmoji.value = api.customEmoji() },
+            async { runCatching { notificationConfig.value = api.notificationConfig() } },
+            async { runCatching { mutedChannels.value = api.mutedChannels().map { it.channelId }.toSet() } },
+        )
+        tasks.awaitAll()
+        startWs()
+    }
+
+    private fun startWs() {
+        if (wsJob == null) {
+            wsJob = scope.launch { ws.frames.collect { runCatching { handle(it) }.onFailure { e -> Log.w(TAG, "ws handle", e) } } }
+            scope.launch {
+                var last = ws.reconnects.value
+                ws.reconnects.collect { n -> if (n != last) { last = n; resync() } }
+            }
+            scope.launch {
+                ws.state.collect { s ->
+                    if (s == WsClient.State.Connected) runCatching { online.value = api.onlineUsers().toSet() }
+                    if (s == WsClient.State.AuthError) checkSession()
+                }
+            }
+        }
+        ws.start()
+    }
+
+    /** WS エラー時、トークンが本当に無効か確かめる */
+    private suspend fun checkSession() {
+        try {
+            api.verifyToken()
+        } catch (e: ApiException) {
+            if (e.isUnauthorized) sessionExpired.value = true
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 再接続後の再同期 (Web 版 resyncAfterReconnect と同等) */
+    private suspend fun resync() {
+        val uid = me.value?.id ?: return
+        runCatching { initialLoadNoWs(uid) }
+        // 開いていないチャンネルの履歴は捨て、開いているチャンネルは最新側を取り直す
+        for ((id, flow) in histories) {
+            if (id == currentChannelId) {
+                flow.value = HistoryState()
+                openChannel(id)
+            } else flow.value = HistoryState()
+        }
+    }
+
+    private suspend fun initialLoadNoWs(userId: String) = coroutineScope {
+        listOf(
+            async { me.value = api.userInfo(userId).also { putUser(it) } },
+            async { channels.value = api.channelList() },
+            async { readTimes.value = api.readTimes().associate { it.channelId to it.readTime } },
+            async { hasNew.value = api.hasNew() },
+            async { inbox.value = api.inbox() },
+        ).awaitAll()
+    }
+
+    fun stop() {
+        ws.stop()
+        wsJob?.cancel()
+        wsJob = null
+    }
+
+    // ------------------------------------------------------------------
+    // ユーザー
+    // ------------------------------------------------------------------
+
+    fun putUser(u: User) = users.update { it + (u.id to u) }
+
+    /** 未取得ならバックグラウンドで取りに行く。同じ ID の同時要求は 1 回にまとめる */
+    fun ensureUser(userId: String) {
+        if (userId == "SYSTEM" || users.value.containsKey(userId) || userRequests.containsKey(userId)) return
+        userRequests[userId] = scope.launch {
+            try {
+                putUser(api.userInfo(userId))
+            } catch (e: Exception) {
+                // 存在しないユーザー: 名前不明として置いておき、再要求を防ぐ
+                if (e is ApiException) putUser(User(id = userId, name = null, isDeleted = true))
+            } finally {
+                userRequests.remove(userId)
+            }
+        }
+    }
+
+    fun roleOf(user: User?): List<Role> = user?.roleLink?.mapNotNull { roles.value[it.roleId] } ?: emptyList()
+
+    /** 自分がその権限を持つか (manageServer は全権限を含む) */
+    fun can(term: String): Boolean {
+        val rs = roleOf(me.value)
+        return rs.any { r ->
+            r.manageServer || when (term) {
+                "manageChannel" -> r.manageChannel
+                "manageRole" -> r.manageRole
+                "manageUser" -> r.manageUser
+                "manageEmoji" -> r.manageEmoji
+                else -> false
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 履歴
+    // ------------------------------------------------------------------
+
+    /**
+     * チャンネルを開く。未読み込みなら既読位置の周りを取得する。
+     * 既読位置より古い側を取り、未読があれば新しい側も続けて取る。
+     */
+    suspend fun openChannel(channelId: String) {
+        currentChannelId = channelId
+        readTimesBefore.update { it + (channelId to (readTimes.value[channelId] ?: "")) }
+        val flow = hist(channelId)
+        if (flow.value.loaded) return
+        lock(channelId).withLock {
+            if (flow.value.loaded) return
+            val readTime = readTimes.value[channelId]
+            val r = api.history(channelId, messageTimeFrom = readTime?.takeIf { it.isNotEmpty() }, fetchLength = 30, direction = "older")
+            mergeSizes(r.imageDimensions)
+            var state = HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1)
+            if (!r.atEnd && r.history.isNotEmpty()) {
+                val newer = api.history(channelId, messageIdFrom = r.history.first().id, fetchLength = 30, direction = "newer")
+                mergeSizes(newer.imageDimensions)
+                state = state.copy(messages = mergeNewer(state.messages, newer.history), atEnd = newer.atEnd)
+            }
+            flow.value = state
+            state.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
+        }
+    }
+
+    /** 最新位置から読み込み直す (「最新へ移動」ボタン) */
+    suspend fun jumpToLatest(channelId: String) {
+        val flow = hist(channelId)
+        lock(channelId).withLock {
+            val r = api.history(channelId, fetchLength = 30, direction = "older")
+            mergeSizes(r.imageDimensions)
+            flow.value = HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1)
+            r.history.forEach { ensureUser(it.userId) }
+        }
+    }
+
+    /** 指定メッセージの周辺を読み込む (メッセージリンク・通知から飛ぶとき)。見つかれば true */
+    suspend fun jumpToMessage(channelId: String, messageId: String): Boolean {
+        val flow = hist(channelId)
+        if (flow.value.messages.any { it.id == messageId }) return true
+        return lock(channelId).withLock {
+            try {
+                val older = api.history(channelId, messageIdFrom = messageId, fetchLength = 30, direction = "older")
+                val newer = api.history(channelId, messageIdFrom = messageId, fetchLength = 30, direction = "newer")
+                mergeSizes(older.imageDimensions); mergeSizes(newer.imageDimensions)
+                flow.value = HistoryState(
+                    messages = mergeNewer(older.history, newer.history),
+                    atTop = older.atTop, atEnd = newer.atEnd, loaded = true, version = flow.value.version + 1,
+                )
+                flow.value.messages.forEach { ensureUser(it.userId) }
+                flow.value.messages.any { it.id == messageId }
+            } catch (e: ApiException) {
+                false
+            }
+        }
+    }
+
+    suspend fun loadOlder(channelId: String) {
+        val flow = hist(channelId)
+        val s = flow.value
+        if (!s.loaded || s.atTop || s.loadingOlder) return
+        val oldest = s.messages.lastOrNull() ?: return
+        flow.update { it.copy(loadingOlder = true) }
+        lock(channelId).withLock {
+            try {
+                val r = api.history(channelId, messageIdFrom = oldest.id, fetchLength = 30, direction = "older")
+                mergeSizes(r.imageDimensions)
+                flow.update { cur ->
+                    val merged = mergeOlder(cur.messages, r.history)
+                    // メモリを抑えるため、極端に長くなったら新しい側を捨てる
+                    if (merged.size > MAX_IN_MEMORY) cur.copy(messages = merged.takeLast(KEEP_AFTER_TRIM), atTop = r.atTop, atEnd = false, loadingOlder = false, version = cur.version + 1)
+                    else cur.copy(messages = merged, atTop = r.atTop, loadingOlder = false, version = cur.version + 1)
+                }
+                r.history.forEach { ensureUser(it.userId) }
+            } catch (e: Exception) {
+                flow.update { it.copy(loadingOlder = false) }
+                throw e
+            }
+        }
+    }
+
+    suspend fun loadNewer(channelId: String) {
+        val flow = hist(channelId)
+        val s = flow.value
+        if (!s.loaded || s.atEnd || s.loadingNewer) return
+        val newest = s.messages.firstOrNull() ?: return
+        flow.update { it.copy(loadingNewer = true) }
+        lock(channelId).withLock {
+            try {
+                val r = api.history(channelId, messageIdFrom = newest.id, fetchLength = 30, direction = "newer")
+                mergeSizes(r.imageDimensions)
+                flow.update { cur ->
+                    val merged = mergeNewer(cur.messages, r.history)
+                    if (merged.size > MAX_IN_MEMORY) cur.copy(messages = merged.take(KEEP_AFTER_TRIM), atEnd = r.atEnd, atTop = false, loadingNewer = false, version = cur.version + 1)
+                    else cur.copy(messages = merged, atEnd = r.atEnd, loadingNewer = false, version = cur.version + 1)
+                }
+                r.history.forEach { ensureUser(it.userId) }
+            } catch (e: Exception) {
+                flow.update { it.copy(loadingNewer = false) }
+                throw e
+            }
+        }
+    }
+
+    /** チャンネルから離れたとき。メモリ節約のため、最新側に揃っていれば末尾を詰める */
+    fun leaveChannel(channelId: String) {
+        if (currentChannelId == channelId) currentChannelId = null
+        hist(channelId).update { s ->
+            if (s.atEnd && s.messages.size > KEEP_WHEN_LEFT) s.copy(messages = s.messages.take(KEEP_WHEN_LEFT), atTop = false, version = s.version + 1) else s
+        }
+    }
+
+    private fun mergeSizes(m: Map<String, ImageSize>) {
+        if (m.isNotEmpty()) imageSizes.update { it + m }
+    }
+
+    /** [current] (新しい順) の後ろに古いメッセージ [older] (新しい順) をつなぐ。重複は除く */
+    private fun mergeOlder(current: List<Message>, older: List<Message>): List<Message> {
+        if (current.isEmpty()) return older
+        val ids = HashSet<String>(current.size * 2).apply { current.forEach { add(it.id) } }
+        return current + older.filter { it.id !in ids }
+    }
+
+    /** [current] (新しい順) の前に新しいメッセージ [newer] (新しい順) をつなぐ。重複は除く */
+    private fun mergeNewer(current: List<Message>, newer: List<Message>): List<Message> {
+        if (current.isEmpty()) return newer
+        val ids = HashSet<String>(current.size * 2).apply { current.forEach { add(it.id) } }
+        return newer.filter { it.id !in ids } + current
+    }
+
+    // ------------------------------------------------------------------
+    // 既読
+    // ------------------------------------------------------------------
+
+    private val readTimeJobs = ConcurrentHashMap<String, Job>()
+
+    /**
+     * 既読時刻を更新する (最新のメッセージを表示しているときに呼ぶ)。
+     * 連続スクロールでの多重送信を避けるため 300ms まとめる。
+     */
+    fun markRead(channelId: String) {
+        val s = hist(channelId).value
+        if (!s.atEnd) return
+        val newest = s.messages.firstOrNull()?.createdAt ?: return
+        val current = readTimes.value[channelId]
+        if (current != null && !isAfter(newest, current)) {
+            if (hasNew.value[channelId] == true) hasNew.update { it - channelId }
+            return
+        }
+        readTimes.update { it + (channelId to newest) }
+        hasNew.update { it - channelId }
+        readTimeJobs[channelId]?.cancel()
+        readTimeJobs[channelId] = scope.launch {
+            delay(300)
+            runCatching { api.updateReadTime(channelId, newest) }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 操作
+    // ------------------------------------------------------------------
+
+    suspend fun send(channelId: String, text: String, fileIds: List<String>, replyTo: String?) {
+        val msg = api.send(channelId, text, fileIds, replyTo)
+        // WS より先に応答が来た場合でも即座に表示する (重複は addMessage で除く)
+        addMessage(msg)
+    }
+
+    suspend fun toggleReaction(message: Message, emojiCode: String) {
+        val mine = message.reactionSummary.firstOrNull { it.emojiCode == emojiCode }?.includingYou == true
+        if (mine) api.unreact(message.id, message.channelId, emojiCode)
+        else api.react(message.id, message.channelId, emojiCode)
+    }
+
+    suspend fun readInbox(messageId: String) {
+        inbox.update { l -> l.filterNot { it.message.id == messageId } }
+        runCatching { api.inboxRead(messageId) }
+    }
+
+    suspend fun clearInbox() {
+        inbox.value = emptyList()
+        api.inboxClear()
+    }
+
+    suspend fun setMuted(channelId: String, muted: Boolean) {
+        if (muted) api.muteChannel(channelId) else api.unmuteChannel(channelId)
+        mutedChannels.update { if (muted) it + channelId else it - channelId }
+    }
+
+    suspend fun refreshChannels() {
+        channels.value = api.channelList()
+        me.value?.id?.let { me.value = api.userInfo(it).also(::putUser) }
+    }
+
+    // ------------------------------------------------------------------
+    // WebSocket イベント
+    // ------------------------------------------------------------------
+
+    private fun <T> decode(s: kotlinx.serialization.KSerializer<T>, e: JsonElement?): T? =
+        e?.let { runCatching { AppJson.decodeFromJsonElement(s, it) }.getOrNull() }
+
+    private fun str(e: JsonElement?, key: String): String? =
+        (e as? kotlinx.serialization.json.JsonObject)?.get(key)?.jsonPrimitive?.contentOrNull
+
+    internal suspend fun handle(f: WsFrame) {
+        val d = f.data
+        when (f.signal) {
+            "message::SendMessage" -> decode(Message.serializer(), d)?.let { onNewMessage(it) }
+            "message::UpdateMessage" -> {
+                val obj = d?.jsonObject ?: return
+                val id = str(d, "id") ?: return
+                val ch = str(d, "channelId") ?: return
+                val patch = decode(Message.serializer(), d)
+                updateMessage(ch, id) { old ->
+                    // URL プレビュー更新時など、一部の項目しか来ないことがあるので、来たものだけ上書き
+                    old.copy(
+                        content = if ("content" in obj) patch?.content ?: old.content else old.content,
+                        isEdited = if ("isEdited" in obj) patch?.isEdited ?: old.isEdited else old.isEdited,
+                        urlPreviews = if ("MessageUrlPreview" in obj) patch?.urlPreviews ?: old.urlPreviews else old.urlPreviews,
+                        files = if ("MessageFileAttached" in obj) patch?.files ?: old.files else old.files,
+                    )
+                }
+            }
+            "message::MessageDeleted" -> {
+                val id = str(d, "messageId") ?: return
+                val ch = str(d, "channelId") ?: return
+                hist(ch).update { s -> s.copy(messages = s.messages.filterNot { it.id == id }, version = s.version + 1) }
+                inbox.update { l -> l.filterNot { it.message.id == id } }
+            }
+            "message::AddReaction", "message::DeleteReaction" -> {
+                val r = decode(Reaction.serializer(), d) ?: return
+                val add = f.signal == "message::AddReaction"
+                val isMe = r.userId == me.value?.id
+                updateMessage(r.channelId, r.messageId) { m ->
+                    val list = m.reactionSummary.toMutableList()
+                    val i = list.indexOfFirst { it.emojiCode == r.emojiCode }
+                    if (add) {
+                        if (i >= 0) list[i] = list[i].copy(count = list[i].count + 1, includingYou = list[i].includingYou || isMe)
+                        else list += ReactionSummary(r.emojiCode, 1, isMe)
+                    } else if (i >= 0) {
+                        val c = list[i].count - 1
+                        if (c <= 0) list.removeAt(i) else list[i] = list[i].copy(count = c, includingYou = list[i].includingYou && !isMe)
+                    }
+                    m.copy(reactionSummary = list)
+                }
+            }
+            "message::ReadTimeUpdated" -> {
+                val rt = decode(ReadTime.serializer(), d) ?: return
+                if (rt.userId.isNotEmpty() && rt.userId != me.value?.id) return
+                readTimes.update { it + (rt.channelId to rt.readTime) }
+                // 別端末で既読にしたら未読表示も消す
+                hasNew.update { it - rt.channelId }
+            }
+            "inbox::Added" -> {
+                val obj = d?.jsonObject ?: return
+                val msg = decode(Message.serializer(), obj["message"]) ?: return
+                val type = obj["type"]?.jsonPrimitive?.contentOrNull ?: "mention"
+                inbox.update { l -> if (l.any { it.message.id == msg.id }) l else listOf(InboxItem(type = type, messageId = msg.id, message = msg, happendAt = msg.createdAt)) + l }
+                ensureUser(msg.userId)
+                if (prefs.settings.value.notifyInbox && msg.channelId !in mutedChannels.value && notificationConfig.value.let { it.enabled && it.mode != "off" }) {
+                    val name = users.value[msg.userId]?.displayName ?: "誰か"
+                    val title = if (type == "reply") "$name さんからの返信" else "$name さんからのメンション"
+                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id))
+                }
+            }
+            "inbox::Deleted" -> {
+                val id = str(d, "messageId") ?: return
+                inbox.update { l -> l.filterNot { it.message.id == id } }
+            }
+            "inbox::Clear" -> inbox.value = emptyList()
+            "channel::Join" -> {
+                val id = str(d, "channelId") ?: return
+                me.update { u -> u?.takeIf { x -> x.channelJoin.none { it.channelId == id } }?.copy(channelJoin = u.channelJoin + ChannelRef(id)) ?: u }
+                if (channels.value.none { it.id == id }) runCatching { channels.update { it + api.channelInfo(id) } }
+            }
+            "channel::Left" -> {
+                val id = str(d, "channelId") ?: return
+                me.update { u -> u?.copy(channelJoin = u.channelJoin.filterNot { it.channelId == id }) }
+                histories.remove(id)
+                hasNew.update { it - id }
+            }
+            "channel::UpdateChannel" -> {
+                val c = decode(Channel.serializer(), d) ?: return
+                channels.update { l -> if (l.any { it.id == c.id }) l.map { if (it.id == c.id) c else it } else l + c }
+            }
+            "channel::Deleted" -> {
+                val id = str(d, "channelId") ?: return
+                channels.update { l -> l.filterNot { it.id == id } }
+                me.update { u -> u?.copy(channelJoin = u.channelJoin.filterNot { it.channelId == id }) }
+                histories.remove(id)
+            }
+            "user::Connected" -> (d as? JsonPrimitive)?.contentOrNull?.let { id -> online.update { it + id } }
+            "user::Disconnected" -> (d as? JsonPrimitive)?.contentOrNull?.let { id -> if (id != me.value?.id) online.update { it - id } }
+            "user::ProfileUpdate" -> {
+                val u = decode(User.serializer(), d) ?: return
+                // 部分的な応答のときは既存値を残す
+                val old = users.value[u.id]
+                val merged = if (old != null) u.copy(
+                    channelJoin = if (u.channelJoin.isEmpty()) old.channelJoin else u.channelJoin,
+                    roleLink = if (u.roleLink.isEmpty()) old.roleLink else u.roleLink,
+                ) else u
+                putUser(merged)
+                if (u.id == me.value?.id) me.update { cur -> cur?.copy(name = merged.name, selfIntroduction = merged.selfIntroduction, isBanned = merged.isBanned) }
+            }
+            "user::Deleted" -> str(d, "userId")?.let { id -> users.update { m -> m[id]?.let { m + (id to it.copy(isDeleted = true)) } ?: m } }
+            "role::Created", "role::Updated" -> decode(Role.serializer(), d)?.let { r -> roles.update { it + (r.id to r) } }
+            "role::Deleted" -> {
+                val id = (d as? JsonPrimitive)?.contentOrNull ?: str(d, "roleId") ?: return
+                roles.update { it - id }
+            }
+            "role::Linked", "role::Unlinked" -> {
+                val uid = str(d, "userId") ?: return
+                val rid = str(d, "roleId") ?: return
+                val link = f.signal == "role::Linked"
+                fun apply(u: User) = u.copy(roleLink = if (link) (u.roleLink.filterNot { it.roleId == rid } + RoleRef(rid)) else u.roleLink.filterNot { it.roleId == rid })
+                users.update { m -> m[uid]?.let { m + (uid to apply(it)) } ?: m }
+                if (uid == me.value?.id) me.update { it?.let(::apply) }
+            }
+            "server::ConfigUpdate" -> decode(ServerConfig.serializer(), d)?.let { c -> serverConfig.update { c.copy(isFirstUser = it.isFirstUser) } }
+            "server::CustomEmojiUploaded" -> decode(CustomEmoji.serializer(), d)?.let { e -> customEmoji.update { l -> l.filterNot { it.code == e.code } + e } }
+            "server::CustomEmojiDeleted" -> decode(CustomEmoji.serializer(), d)?.let { e -> customEmoji.update { l -> l.filterNot { it.code == e.code } } }
+        }
+    }
+
+    private fun onNewMessage(m: Message) {
+        val myId = me.value?.id
+        val viewing = currentChannelId == m.channelId && appInForeground
+        addMessage(m)
+        ensureUser(m.userId)
+        if (m.userId == myId) {
+            // 自分の送信は既読扱い
+            readTimes.update { it + (m.channelId to m.createdAt) }
+            readTimesBefore.update { it + (m.channelId to m.createdAt) }
+            return
+        }
+        if (!viewing) {
+            hasNew.update { it + (m.channelId to true) }
+            val cfg = notificationConfig.value
+            val wantsAll = cfg.mode == "all" || prefs.settings.value.notifyAll
+            if (!m.isSystemMessage && cfg.enabled && cfg.mode != "off" && wantsAll && m.channelId !in mutedChannels.value) {
+                val name = users.value[m.userId]?.displayName ?: "新着メッセージ"
+                val ch = channels.value.firstOrNull { it.id == m.channelId }?.name
+                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id))
+            }
+        }
+    }
+
+    /** 新着を履歴に入れる。最新側を表示していないチャンネルには入れない (間が抜けるため) */
+    fun addMessage(m: Message) {
+        val flow = histories[m.channelId] ?: return
+        flow.update { s ->
+            if (!s.loaded || !s.atEnd || s.messages.any { it.id == m.id }) s
+            else s.copy(messages = listOf(m) + s.messages, version = s.version + 1)
+        }
+    }
+
+    private fun updateMessage(channelId: String, id: String, f: (Message) -> Message) {
+        histories[channelId]?.update { s ->
+            val i = s.messages.indexOfFirst { it.id == id }
+            if (i < 0) s else s.copy(messages = s.messages.toMutableList().also { it[i] = f(it[i]) }, version = s.version + 1)
+        }
+        inbox.update { l -> if (l.none { it.message.id == id }) l else l.map { if (it.message.id == id) it.copy(message = f(it.message)) else it } }
+    }
+
+    /** 通知用に、メンション・チャンネルリンクを名前に置き換えた文 */
+    fun plainText(content: String): String {
+        if (content.startsWith("{") && content.contains("messageTerm")) return "システムメッセージ"
+        return MENTION.replace(content) { mr -> "@" + (users.value[mr.groupValues[1]]?.displayName ?: "不明なユーザー") }
+            .let { CHANNEL.replace(it) { mr -> "#" + (channels.value.firstOrNull { c -> c.id == mr.groupValues[1] }?.name ?: "不明なチャンネル") } }
+    }
+
+    companion object {
+        private const val TAG = "ChatStore"
+        private const val MAX_IN_MEMORY = 600
+        private const val KEEP_AFTER_TRIM = 450
+        private const val KEEP_WHEN_LEFT = 60
+        private val MENTION = Regex("@<([a-zA-Z0-9-]+)>")
+        private val CHANNEL = Regex("#<([a-zA-Z0-9-]+)>")
+
+        fun isAfter(a: String, b: String): Boolean = runCatching { Instant.parse(a).isAfter(Instant.parse(b)) }.getOrDefault(a > b)
+    }
+}

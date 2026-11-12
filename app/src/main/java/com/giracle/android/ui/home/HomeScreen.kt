@@ -1,0 +1,190 @@
+package com.giracle.android.ui.home
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.giracle.android.data.model.Channel
+import com.giracle.android.data.net.WsClient
+import com.giracle.android.ui.LocalNavigator
+import com.giracle.android.ui.Screen
+import com.giracle.android.ui.common.AppIcons
+import com.giracle.android.ui.common.Avatar
+import com.giracle.android.ui.common.Badge
+import com.giracle.android.ui.common.LocalGraph
+import com.giracle.android.ui.common.LocalStore
+
+/** ホーム = Web 版のサイドバー。参加チャンネルと各機能への入り口 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(loading: Boolean) {
+    val graph = LocalGraph.current
+    val store = LocalStore.current
+    val nav = LocalNavigator.current
+    val me by store.me.collectAsStateWithLifecycle()
+    val server by store.serverConfig.collectAsStateWithLifecycle()
+    val channels by store.channels.collectAsStateWithLifecycle()
+    val hasNew by store.hasNew.collectAsStateWithLifecycle()
+    val inbox by store.inbox.collectAsStateWithLifecycle()
+    val online by store.online.collectAsStateWithLifecycle()
+    val muted by store.mutedChannels.collectAsStateWithLifecycle()
+    val roles by store.roles.collectAsStateWithLifecycle()
+    val wsState by graph.ws.state.collectAsStateWithLifecycle()
+    var reorder by rememberSaveable { mutableStateOf(false) }
+    var order by remember { mutableStateOf(graph.prefs.channelOrder) }
+
+    val joinedIds = me?.channelJoin?.map { it.channelId }?.toSet() ?: emptySet()
+    val joined = remember(channels, joinedIds, order) {
+        val byId = channels.filter { it.id in joinedIds }.associateBy { it.id }
+        val ordered = order.mapNotNull { byId[it] }
+        ordered + byId.values.filter { it.id !in order }.sortedBy { it.name }
+    }
+    val canManage = remember(me, roles) { listOf("manageServer", "manageRole", "manageEmoji").any { store.can(it) } }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(server.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+                },
+                actions = {
+                    IconButton(onClick = { nav.push(Screen.Search()) }) { Icon(Icons.Default.Search, "検索") }
+                    IconButton(onClick = { nav.push(Screen.Settings) }) {
+                        me?.let { Avatar(it.id, size = 30.dp) } ?: Icon(Icons.Default.Settings, "設定")
+                    }
+                },
+            )
+        },
+    ) { pad ->
+        LazyColumn(Modifier.fillMaxSize().padding(pad)) {
+            item(key = "status", contentType = "status") {
+                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                else if (wsState != WsClient.State.Connected) {
+                    val label = when (wsState) {
+                        WsClient.State.Connecting -> "接続中…"
+                        WsClient.State.AuthError -> "リアルタイム接続が拒否されました (サーバーの CORS_ORIGIN 設定を確認)"
+                        else -> "オフライン — 再接続を待っています"
+                    }
+                    Text(label, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            item(key = "online", contentType = "nav") {
+                NavRow(AppIcons.People, "オンライン: ${online.size} 人") { nav.push(Screen.Members) }
+            }
+            item(key = "inbox", contentType = "nav") {
+                NavRow(Icons.Default.Notifications, "通知", trailing = if (inbox.isNotEmpty()) inbox.size.toString() else null) { nav.push(Screen.Inbox) }
+            }
+            item(key = "browser", contentType = "nav") { NavRow(Icons.Default.List, "チャンネル一覧") { nav.push(Screen.ChannelBrowser) } }
+            item(key = "members", contentType = "nav") { NavRow(AppIcons.People, "メンバー") { nav.push(Screen.Members) } }
+            if (canManage) item(key = "manage", contentType = "nav") { NavRow(AppIcons.Storage, "サーバー管理") { nav.push(Screen.ManageServer) } }
+            item(key = "hdr", contentType = "hdr") {
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("参加チャンネル", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { reorder = !reorder }) { Text(if (reorder) "完了" else "並べ替え") }
+                }
+            }
+            if (joined.isEmpty() && !loading) {
+                item(key = "empty", contentType = "hdr") {
+                    Text("まだチャンネルに参加していません。「チャンネル一覧」から参加できます。", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(joined, key = { it.id }, contentType = { "channel" }) { c ->
+                ChannelRow(
+                    c, unread = hasNew[c.id] == true, muted = c.id in muted, reorder = reorder,
+                    onClick = { nav.openChannel(c.id) },
+                    onMove = { delta ->
+                        val ids = joined.map { it.id }.toMutableList()
+                        val i = ids.indexOf(c.id)
+                        val j = (i + delta).coerceIn(0, ids.lastIndex)
+                        if (i != j) {
+                            ids.removeAt(i); ids.add(j, c.id)
+                            order = ids
+                            graph.prefs.channelOrder = ids
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavRow(icon: ImageVector, label: String, trailing: String? = null, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(label) },
+        leadingContent = { Icon(icon, null) },
+        trailingContent = trailing?.let { { Badge(it, strong = true) } },
+        modifier = Modifier.clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
+}
+
+@Composable
+private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boolean, onClick: () -> Unit, onMove: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = !reorder, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(if (c.viewableRole.isNotEmpty()) Icons.Default.Lock else AppIcons.Tag, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            c.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            fontWeight = if (unread && !muted) FontWeight.Bold else FontWeight.Normal,
+            color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        )
+        if (c.isArchived) Badge("アーカイブ")
+        if (muted) Icon(AppIcons.NotificationsOff, "ミュート中", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (unread && !reorder) Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+        if (reorder) {
+            IconButton(onClick = { onMove(-1) }) { Icon(Icons.Default.KeyboardArrowUp, "上へ") }
+            IconButton(onClick = { onMove(1) }) { Icon(Icons.Default.KeyboardArrowDown, "下へ") }
+        }
+        Spacer(Modifier.width(0.dp))
+    }
+}
