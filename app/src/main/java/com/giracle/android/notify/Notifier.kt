@@ -197,13 +197,13 @@ object Notifier {
     }
 
     /** 通知のボタンでの操作が失敗したことを、元の通知を置き換えて知らせる (タップでアプリを開く) */
-    fun postError(context: Context, message: String, tag: String?) {
+    fun postError(context: Context, message: String, tag: String?, detail: String = "アプリを開いてもう一度試してください") {
         if (!canPost(context)) return
         val pi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val notif = NotificationCompat.Builder(context, CH_MESSAGES)
             .setSmallIcon(R.drawable.ic_stat_message)
             .setContentTitle(message)
-            .setContentText("アプリを開いてもう一度試してください")
+            .setContentText(detail)
             .setAutoCancel(true)
             .setContentIntent(pi)
             .build()

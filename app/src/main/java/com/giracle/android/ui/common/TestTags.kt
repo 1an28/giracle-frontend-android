@@ -50,6 +50,8 @@ object TestTags {
     fun expandLongText(messageId: String) = "channel.expand:$messageId"
     const val LONG_TEXT_DIALOG = "channel.long_text"
     const val COMPOSER_INPUT = "composer.input"
+    /** 送信待ちの一覧 (#30) */
+    const val COMPOSER_OUTBOX = "composer.outbox"
     const val COMPOSER_SEND = "composer.send"
 
     // 設定

@@ -175,6 +175,37 @@ class LiveServerTest {
     }
 
     /** 管理者によるパスワードのリセット (D-022): 新しいパスワードでログインでき、古いものは使えなくなる */
+    /**
+     * サーバーの不具合 S-1 (#24): 未読のメンションが残っているチャンネルを削除すると 500 になる。
+     * 直っていれば成功する。直っていなければ「スキップ」にして CI のログに残す (アプリの不具合ではないので失敗にしない)。
+     */
+    @Test fun deleteChannelWithUnreadMention() = runBlocking {
+        assumeTrue("GIRACLE_TEST_SERVER 未指定のためスキップ", server != null)
+        val suffix = System.currentTimeMillis().toString().takeLast(6)
+        val admin = client("s1admin")
+        admin.api.signIn(System.getenv("GIRACLE_TEST_ADMIN_USER") ?: "admin", System.getenv("GIRACLE_TEST_ADMIN_PASS") ?: "password123")
+        val invite = "s1inv$suffix"
+        admin.api.createInvite(invite, 1)
+        val u = client("s1user")
+        u.api.signUp("carol$suffix", "pass1234", invite)
+        val uId = u.api.signIn("carol$suffix", "pass1234").userId
+        val ch = admin.api.createChannel("s1-$suffix", "S-1 の確認").channelId
+        runCatching { admin.api.joinChannel(ch) }
+        u.api.joinChannel(ch)
+        admin.api.send(ch, "未読のメンション @<$uId>", emptyList(), null)
+        val result = runCatching { admin.api.deleteChannel(ch) }
+        val err = result.exceptionOrNull()
+        if (err is com.giracle.android.data.net.ApiException && err.code >= 500) {
+            println("S-1: まだ直っていない (チャンネル削除が ${err.code})。#24")
+            // 後片付け: 通知を消してから消し直す
+            runCatching { u.api.inboxClear() }
+            runCatching { admin.api.deleteChannel(ch) }
+            assumeTrue("S-1 はサーバー側で未修正 (#24)", false)
+        }
+        result.getOrThrow()
+        println("S-1: 直っている (未読のメンションがあっても削除できた)。#24 を閉じてよい")
+    }
+
     @Test fun adminResetsPassword() = runBlocking {
         assumeTrue("GIRACLE_TEST_SERVER 未指定のためスキップ", server != null)
         val suffix = System.currentTimeMillis().toString().takeLast(6)

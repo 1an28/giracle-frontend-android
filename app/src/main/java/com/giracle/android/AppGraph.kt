@@ -59,6 +59,22 @@ class AppGraph(context: Context) {
         store.appInForeground = fg
     }
 
+    /** 電波が無くて送れなかったメッセージ (#30、D-029) */
+    val outbox = com.giracle.android.data.Outbox(File(appContext.filesDir, "outbox.json"))
+
+    private val outboxSender = object : com.giracle.android.data.Outbox.Sender {
+        override suspend fun send(item: com.giracle.android.data.OutboxItem) =
+            store.send(item.channelId, item.text, item.fileIds, item.replyTo)
+        override suspend fun recent(channelId: String) = api.history(channelId, fetchLength = 30).history
+        override val myUserId: String? get() = store.me.value?.id ?: prefs.userId
+    }
+
+    /** 送信待ちを送る。[only] を指定したらそれだけ (利用者が「今すぐ送る」を選んだとき) */
+    fun flushOutbox(only: String? = null) {
+        if (_phase.value !is AppPhase.SignedIn || outbox.items.value.isEmpty()) return
+        scope.launch { outbox.flush(outboxSender, only) }
+    }
+
     private fun newStore() =
         ChatStore(api, ws, prefs, scope) { inForeground || prefs.settings.value.keepConnection }.also { it.appInForeground = inForeground }
 
@@ -83,6 +99,10 @@ class AppGraph(context: Context) {
             snapshotJob = scope.launch { readSnapshot(uid)?.let { store.restore(it) } }
         } else {
             _phase.value = AppPhase.SignedOut
+        }
+        scope.launch {
+            // つながったら送信待ちを送る (#30)
+            ws.state.collect { if (it == com.giracle.android.data.net.WsClient.State.Connected) flushOutbox() }
         }
         scope.launch {
             // 「セッション切れ」通知を監視 (ストアが作り直されたら付け替える)
@@ -191,6 +211,7 @@ class AppGraph(context: Context) {
         store.stop()
         prefs.clearSession()
         com.giracle.android.ui.channel.Drafts.clear(appContext)
+        outbox.clear()
         com.giracle.android.ui.ChannelShortcuts.clear(appContext)
         snapshotFile.delete()
         // 状態を捨てて作り直す

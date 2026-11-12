@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +85,7 @@ import com.giracle.android.ui.common.rememberUser
 import com.giracle.android.ui.common.toast
 import com.giracle.android.ui.common.uploadFileFrom
 import com.giracle.android.data.ImageShrinker
+import com.giracle.android.data.Outbox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -281,9 +283,16 @@ fun Composer(
                 com.giracle.android.ui.ChannelShortcuts.reportSent(ctx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
                 Drafts.remove(ctx, channelId)
             } catch (e: Exception) {
-                state.setTextAndPlaceCursorAtEnd(keep)
-                attachments.addAll(keepAttach)
-                ctx.toast("送信できませんでした: ${e.userMessage()}")
+                if (Outbox.isNetworkFailure(e)) {
+                    // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
+                    graph.outbox.add(channelId, body, ids, reply)
+                    Drafts.remove(ctx, channelId)
+                    ctx.toast("送信待ちにしました。つながったら送ります")
+                } else {
+                    state.setTextAndPlaceCursorAtEnd(keep)
+                    attachments.addAll(keepAttach)
+                    ctx.toast("送信できませんでした: ${e.userMessage()}")
+                }
             } finally { sending = false }
         }
     }
@@ -301,6 +310,7 @@ fun Composer(
                 }
                 HorizontalDivider()
             }
+            OutboxBar(channelId)
             if (editing != null) Banner(Icons.Default.Edit, "メッセージを編集中", onCancelEdit)
             replyTo?.let { r ->
                 val u = rememberUser(r.userId)
@@ -423,5 +433,36 @@ private class ProgressBody(private val inner: okhttp3.RequestBody, private val o
         }.buffer()
         inner.writeTo(fs)
         fs.flush()
+    }
+}
+
+/** このチャンネルの送信待ち (#30)。電波が戻ったら自動で送る。断られたものは理由を出す */
+@Composable
+private fun OutboxBar(channelId: String) {
+    val graph = LocalGraph.current
+    val all by graph.outbox.items.collectAsStateWithLifecycle()
+    val items = remember(all, channelId) { all.filter { it.channelId == channelId } }
+    if (items.isEmpty()) return
+    Column(Modifier.fillMaxWidth().testTag(TestTags.COMPOSER_OUTBOX)) {
+        for (item in items) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (item.error == null) "送信待ち" else "送れませんでした: ${item.error}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (item.error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        item.text.replace('\n', ' ').ifBlank { "(添付ファイル ${item.fileIds.size} 件)" },
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+                TextButton(onClick = { graph.flushOutbox(item.localId) }) { Text("今すぐ送る") }
+                TextButton(onClick = { graph.outbox.remove(item.localId) }) { Text("取り消す") }
+            }
+        }
+        HorizontalDivider()
     }
 }

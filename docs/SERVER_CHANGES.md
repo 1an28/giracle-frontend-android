@@ -42,6 +42,9 @@ Android ネイティブアプリ (Giracle Native) を作るなかで分かった
   - `Message` を消す前に、そのチャンネルのメッセージに紐づく Inbox 行を消す (`QueryInbox.removeByChannelInTx` を足す)。
     単体のメッセージ削除 (`/message/delete`) は Inbox を先に消しているので、それとそろう。
   - `Inbox.messageId` を `onDelete: "cascade"` にする。
+- **直ったかの確かめ方**: CI の `live-test` が、backend の最新版で毎回 `LiveServerTest.deleteChannelWithUnreadMention` を動かす。
+  直っていなければ「スキップ」になり、ログに `S-1: まだ直っていない` と出る。直れば成功になり `S-1: 直っている` と出る
+  (2026-11-13 時点の `87be860` ではまだ 500)。
 
 ---
 

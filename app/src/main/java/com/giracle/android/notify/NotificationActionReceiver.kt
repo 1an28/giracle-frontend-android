@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.core.app.RemoteInput
 import com.giracle.android.GiracleApp
 import com.giracle.android.data.ChatStore
+import com.giracle.android.data.Outbox
 import kotlinx.coroutines.launch
 
 /**
@@ -25,7 +26,15 @@ class NotificationActionReceiver : BroadcastReceiver() {
             try {
                 val store = graph.store
                 if (intent.action == ACTION_REPLY && !reply.isNullOrEmpty()) {
-                    store.send(channelId, reply, emptyList(), messageId)
+                    try {
+                        store.send(channelId, reply, emptyList(), messageId)
+                    } catch (e: Exception) {
+                        if (!Outbox.isNetworkFailure(e)) throw e
+                        // 電波が無いときは送信待ちに入れ、次につながったときに送る (#30)
+                        graph.outbox.add(channelId, reply, emptyList(), messageId)
+                        Notifier.postError(context, "返信を送信待ちにしました", tag, "次にアプリがつながったときに送ります")
+                        return@launch
+                    }
                 }
                 if (messageId != null) {
                     store.readInbox(messageId)
