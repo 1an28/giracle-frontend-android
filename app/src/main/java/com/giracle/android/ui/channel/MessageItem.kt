@@ -453,7 +453,10 @@ private fun Reactions(m: Message, cb: MessageCallbacks) {
 fun EmojiView(code: String, size: androidx.compose.ui.unit.Dp) {
     val graph = LocalGraph.current
     val uni = Emojis.unicodeOf(code)
-    if (uni != null) {
+    if (uni != null && !Emojis.canDraw(uni)) {
+        // 端末のフォントに無い新しい絵文字はコードで出す (□ を避ける)
+        Text(":$code:", style = MaterialTheme.typography.labelSmall)
+    } else if (uni != null) {
         Text(uni, fontSize = with(LocalDensity.current) { (size.toPx() * 0.8f).toSp() })
     } else {
         val store = LocalStore.current

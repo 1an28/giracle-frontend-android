@@ -43,6 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -94,7 +98,7 @@ fun HomeScreen(loading: Boolean) {
                 },
                 actions = {
                     IconButton(onClick = { nav.push(Screen.Search()) }) { Icon(Icons.Default.Search, "検索") }
-                    IconButton(onClick = { nav.push(Screen.Settings) }) {
+                    IconButton(onClick = { nav.push(Screen.Settings) }, modifier = Modifier.clearAndSetSemantics { contentDescription = "設定"; role = Role.Button }) {
                         me?.let { Avatar(it.id, size = 30.dp) } ?: Icon(Icons.Default.Settings, "設定")
                     }
                 },

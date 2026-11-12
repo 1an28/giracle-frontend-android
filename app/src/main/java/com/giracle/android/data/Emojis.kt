@@ -22,7 +22,8 @@ object Emojis {
     private val ready = CompletableDeferred<Data>()
     @Volatile private var data: Data? = null
 
-    class Data(val all: List<EmojiEntry>, val byCode: Map<String, EmojiEntry>)
+    /** all = この端末のフォントで描ける絵文字だけ (ピッカー用)。byCode = 全件 (表示用の対応表) */
+    class Data(val all: List<EmojiEntry>, val byCode: Map<String, EmojiEntry>, val drawable: Set<String>)
 
     val groupNames = listOf("顔", "人", "肌", "動物", "食べ物", "旅行", "活動", "物", "記号", "旗")
 
@@ -40,7 +41,10 @@ object Emojis {
                     for (c in e.shortcodes) map.putIfAbsent(c, e)
                 }
             }
-            val d = Data(list, map)
+            // 端末のフォントが古いと新しい絵文字が □ になるため、描けるものだけをピッカーに出す
+            val paint = android.graphics.Paint()
+            val ok = list.filter { runCatching { paint.hasGlyph(it.char) }.getOrDefault(true) }
+            val d = Data(ok, map, ok.mapTo(HashSet()) { it.char })
             data = d
             ready.complete(d)
         }
@@ -53,6 +57,9 @@ object Emojis {
 
     /** ショートコード → 絵文字文字。未知なら null (カスタム絵文字の可能性) */
     fun unicodeOf(code: String): String? = data?.byCode?.get(code)?.char
+
+    /** この端末で描ける絵文字か */
+    fun canDraw(char: String): Boolean = data?.drawable?.contains(char) ?: true
 
     fun search(query: String, limit: Int = 200): List<EmojiEntry> {
         val d = data ?: return emptyList()
