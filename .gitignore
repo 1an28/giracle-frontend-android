@@ -40,5 +40,3 @@ keystore/
 *.p12
 dist/
 
-# リリース用に署名済み APK だけは置く (releases/README.md 参照)
-!releases/*.apk
