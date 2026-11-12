@@ -187,7 +187,7 @@ class AppGraph(context: Context) {
         // セッション切れでも、前のユーザー宛ての通知を受け続けないよう配信先の登録を解く
         if (prefs.pushEndpoint != null) {
             prefs.pushEndpoint = null
-            runCatching { org.unifiedpush.android.connector.UnifiedPush.unregister(appContext) }
+            scope.launch(Dispatchers.IO) { runCatching { org.unifiedpush.android.connector.UnifiedPush.unregister(appContext) } }
         }
         store.stop()
         prefs.clearSession()

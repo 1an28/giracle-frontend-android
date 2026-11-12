@@ -5,6 +5,9 @@ import android.content.Context
 import android.util.Log
 import com.giracle.android.AppGraph
 import com.giracle.android.data.net.ApiException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.unifiedpush.android.connector.UnifiedPush
 import org.unifiedpush.android.connector.data.ResolvedDistributor
 
@@ -56,8 +59,12 @@ object PushRegistrar {
             Log.i(TAG, "auto enable skipped: ${e.message}")
             return
         }
-        UnifiedPush.saveDistributor(context, resolved)
-        UnifiedPush.register(context, vapid = key)
+        // 登録は Android Keystore で鍵を作るので、時間がかかることがある (エミュレータの起動直後に 20 秒以上かかり、
+        // 画面が固まった)。画面の処理の流れ (メインスレッド) から外して行う
+        withContext(Dispatchers.IO) {
+            UnifiedPush.saveDistributor(context, resolved)
+            UnifiedPush.register(context, vapid = key)
+        }
         Log.i(TAG, "auto enable requested ($resolved)")
     }
 
@@ -75,7 +82,9 @@ object PushRegistrar {
         graph.prefs.pushOptOut = false
         UnifiedPush.tryUseCurrentOrDefaultDistributor(activity) { ok ->
             if (ok) {
-                UnifiedPush.register(activity, vapid = key)
+                // 鍵の生成に時間がかかることがあるので、画面の処理の流れから外す (autoEnable と同じ)
+                val app = activity.applicationContext
+                graph.scope.launch(Dispatchers.IO) { UnifiedPush.register(app, vapid = key) }
                 onResult(Result.Requested)
             } else {
                 onResult(Result.NoDistributor)
@@ -86,7 +95,8 @@ object PushRegistrar {
     /** 設定画面の「無効にする」。以後、自動では有効にしない */
     fun disable(context: Context, graph: AppGraph) {
         graph.prefs.pushOptOut = true
-        UnifiedPush.unregister(context)
+        val app = context.applicationContext
+        graph.scope.launch(Dispatchers.IO) { UnifiedPush.unregister(app) }
     }
 
     /**
@@ -97,7 +107,7 @@ object PushRegistrar {
         val ep = graph.prefs.pushEndpoint
         if (ep != null) runCatching { graph.api.deviceUnregister(ep) }
         graph.prefs.pushEndpoint = null
-        runCatching { UnifiedPush.unregister(context) }
+        withContext(Dispatchers.IO) { runCatching { UnifiedPush.unregister(context) } }
         autoTriedFor = null
     }
 
