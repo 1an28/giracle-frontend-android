@@ -24,7 +24,9 @@ set -e
 set +e
 
 run() { # $1: テストクラス, $2: 出力名
+  # build.gradle.kts の testInstrumentationRunnerArguments は、am instrument を直接呼ぶと渡らないので、ここで渡す
   "$ADB" shell am instrument -w -e class "$TEST_PKG.$1" -e appPackage "$APP_PKG" -e server http://localhost:3333 \
+    -e androidx.benchmark.suppressErrors EMULATOR \
     "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/$2.txt"
   grep -q '^OK (' "$OUT/$2.txt"
 }

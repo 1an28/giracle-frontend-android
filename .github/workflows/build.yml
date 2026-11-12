@@ -1,10 +1,16 @@
 name: build
 
 on:
+  # PR のブランチは pull_request で走るので、push は main だけにする (同じコミットで 2 回走らせない。#31)
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+# 同じブランチに続けて push したときは、古い実行を取り消す
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -15,6 +21,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # 依存ライブラリと Gradle の取得を前回の実行から使い回し、待ち時間を減らす (#31)
+          cache: gradle
       # ランナーに入っている Android SDK を使う。足りないものだけ入れる
       # (android-actions/setup-android は廃止済みの "tools" を入れようとして失敗するため使わない)
       - name: Install SDK packages

@@ -14,12 +14,16 @@ on:
 
 permissions:
   contents: write
+  actions: read # main で記録した Baseline Profile (baseline-profile の成果物) を取ってくるため
 
 jobs:
   release:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      # 記録した Baseline Profile を配布版に入れるか (D-021)。エミュレータの計測で、今のワイルドカード規則より速いと
+      # 確かめられていないので、確かめられるまで "false" (リポジトリにある Baseline Profile のまま出す)
+      USE_RECORDED_BASELINE_PROFILE: "false"
       HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       # タグの push ならそのタグを、手動実行なら実行したブランチの最新を使う
@@ -28,6 +32,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # 依存ライブラリと Gradle の取得を前回の実行から使い回し、待ち時間を減らす (#31)
+          cache: gradle
       - name: Install SDK packages
         run: .github/scripts/sdk-install.sh
 
@@ -38,17 +44,30 @@ jobs:
             echo "::error::タグ ($TAG) と app/build.gradle.kts の versionName (v$VERSION) が一致しません"; exit 1
           fi
 
-      # 起動を速くする Baseline Profile を、エミュレータで実際に操作して記録し直す (#8、D-021)。
-      # 失敗しても、リポジトリにある Baseline Profile のままリリースする (記録はリリースを止めない)
+      # 起動を速くする Baseline Profile (#8、D-021)。main の同じコミットで記録済みなら、それを使う (記録には 5〜15 分かかるため。#31)。
+      # 無ければここで記録する。どちらも失敗したら、リポジトリにある Baseline Profile のままリリースする
+      - name: Use Baseline Profile recorded on main
+        id: bpreuse
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN=$(gh run list --workflow baseline-profile.yml --branch main --event push --status success --commit "$GITHUB_SHA" -L 1 --json databaseId -q '.[0].databaseId')
+          if [ -z "$RUN" ]; then echo "このコミットの記録が無い。ここで記録する"; exit 1; fi
+          gh run download "$RUN" -n baseline-profile -D bp-artifact
+          cp bp-artifact/app/src/main/baseline-prof.txt app/src/main/baseline-prof.txt
+          echo "run $RUN の記録を使う (rules: $(grep -vc '^#' app/src/main/baseline-prof.txt))"
       - name: Build APKs for recording the Baseline Profile
         id: bpbuild
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true' && steps.bpreuse.outcome != 'success'
         continue-on-error: true
         run: ./gradlew :app:assembleNonMinifiedRelease :baselineprofile:assembleDebug
       - uses: ./.github/actions/local-server
-        if: steps.bpbuild.outcome == 'success'
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true' && steps.bpreuse.outcome != 'success' && steps.bpbuild.outcome == 'success'
         continue-on-error: true
       - name: Record Baseline Profile
-        if: steps.bpbuild.outcome == 'success'
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true' && steps.bpreuse.outcome != 'success' && steps.bpbuild.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 30
         run: |
