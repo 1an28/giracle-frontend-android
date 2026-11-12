@@ -35,8 +35,16 @@ echo "e2e: $(( $(date +%s) - t0 ))s"
 "$ADB" pull "/sdcard/Android/data/$TEST_PKG/files/screenshots" "$OUT/" > /dev/null 2>&1 || true
 
 status=0
+# 失敗したときの手がかりを、成果物を開かなくても CI のログで読めるように出す
+show_clues() {
+  echo "::group::logcat (アプリ・起動・クラッシュに関係する行)"
+  grep -E "GiracleE2E|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
+  echo "::endgroup::"
+  echo "::group::crash バッファ"; cat "$OUT/crash.txt"; echo "::endgroup::"
+}
 # am instrument は失敗しても終了コードが 0 なので、出力で判断する
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
+[ $status = 0 ] || show_clues
 if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"
   cat "$OUT/crash.txt"

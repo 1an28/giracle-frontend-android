@@ -164,8 +164,12 @@ class ReleaseAppTest {
 
     private fun res(tag: String): BySelector = By.res(tag)
 
+    /** ランチャーから開くのと同じ画面を起動する (起動画面のクラス名は端末に問い合わせる) */
     private fun launch() {
-        shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $pkg")
+        val component = shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $pkg")
+            .lines().map { it.trim() }.lastOrNull { it.contains('/') }
+            ?: error("$pkg の起動画面が見つからない (インストールされていない?)")
+        shell("am start -W -n $component")
     }
 
     private fun wait(sel: BySelector, timeoutMs: Long, what: String): UiObject2 =
