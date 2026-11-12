@@ -30,7 +30,8 @@ class GiracleApp : Application(), SingletonImageLoader.Factory {
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 graph.store.appInForeground = true
-                graph.ws.nudge()
+                // 背面で切断していた場合はつなぎ直す (再接続後に取りこぼしを取り直す)
+                if (graph.phase.value is AppPhase.SignedIn) graph.ws.start()
             }
 
             override fun onStop(owner: LifecycleOwner) {

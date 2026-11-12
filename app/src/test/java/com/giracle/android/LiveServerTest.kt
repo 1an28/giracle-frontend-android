@@ -147,6 +147,13 @@ class LiveServerTest {
         b.api.leaveChannel(ch)
         eventually { if (b.store.me.value!!.channelJoin.none { it.channelId == ch }) true else null }
 
+        // 背面で切断 → その間の新着 → 前面復帰で再接続し、取りこぼしを取り直す
+        b.api.joinChannel(ch)
+        a.ws.stop()
+        val missed = b.api.send(ch, "切断中のメッセージ", emptyList(), null)
+        a.ws.start()
+        eventually(15_000) { a.store.history(ch).value.messages.firstOrNull { it.id == missed.id } }
+
         // 起動高速化用スナップショット: 保存→読み込みで履歴と名前が復元される
         val snap = a.store.snapshot()!!
         val json = com.giracle.android.data.net.AppJson.encodeToString(com.giracle.android.data.Snapshot.serializer(), snap)

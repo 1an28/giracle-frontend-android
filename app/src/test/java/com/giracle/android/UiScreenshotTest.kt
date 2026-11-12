@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.test.core.app.ApplicationProvider
@@ -64,7 +65,8 @@ class UiScreenshotTest {
         waitText("雑談"); shot("01_home")
         rule.onNodeWithText("雑談").performClick()
         waitText("新しいアイコン案です"); Thread.sleep(1500); shot("02_channel")
-        rule.onAllNodesWithText("おはようございます", substring = true).onLast().performSemanticsAction(SemanticsActions.OnLongClick)
+        rule.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(hasText("今日もよろしく", substring = true) and androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)); rule.waitForIdle()
+        rule.onAllNodes(hasText("おはようございます", substring = true) and androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)).onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
         waitText("返信"); shot("03_message_actions")
         rule.onNodeWithContentDescription("絵文字を選ぶ").performClick()
         Thread.sleep(800); shot("04_emoji_picker")

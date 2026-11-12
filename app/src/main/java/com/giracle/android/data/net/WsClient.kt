@@ -56,7 +56,11 @@ class WsClient(
 
     fun start() {
         wanted = true
-        if (socket == null && _state.value != State.Connecting) open()
+        if (socket == null && _state.value != State.Connecting) {
+            retryJob?.cancel()
+            attempts = 0
+            open()
+        }
     }
 
     fun stop() {
