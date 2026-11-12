@@ -24,6 +24,7 @@ class PushServiceImpl : PushService() {
     private val graph get() = (application as GiracleApp).graph
 
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {
+        Log.i(TAG, "new endpoint: ${endpoint.url.substringBefore("/fcm/send/").take(60)}")
         val keys = endpoint.pubKeySet ?: run {
             Log.w(TAG, "endpoint without keys")
             return
@@ -39,10 +40,16 @@ class PushServiceImpl : PushService() {
     }
 
     override fun onMessage(message: PushMessage, instance: String) {
+        Log.i(TAG, "message: decrypted=${message.decrypted} bytes=${message.content.size}")
         if (!message.decrypted) return
-        val p = runCatching { AppJson.decodeFromString(PushPayload.serializer(), message.content.decodeToString()) }.getOrNull() ?: return
+        val p = runCatching { AppJson.decodeFromString(PushPayload.serializer(), message.content.decodeToString()) }
+            .onFailure { Log.w(TAG, "payload decode failed", it) }.getOrNull() ?: return
         // 前面にいてリアルタイム接続があるなら、画面内の通知で足りる
-        if (graph.store.appInForeground && graph.ws.state.value == com.giracle.android.data.net.WsClient.State.Connected) return
+        if (graph.store.appInForeground && graph.ws.state.value == com.giracle.android.data.net.WsClient.State.Connected) {
+            Log.i(TAG, "skip: in foreground")
+            return
+        }
+        Log.i(TAG, "post notification (canPost=${Notifier.canPost(this)})")
         // 題は「<名前> さんからのメンション」の形 (giracle-backend の SendMessageNotifications.ts)。名前を取り出して会話の形にする
         val sender = SENDER.find(p.title)?.groupValues?.get(1)
         Notifier.post(this, InAppNotice(p.title, graph.store.plainText(p.body), p.data?.channelId, p.data?.messageId, sender = sender), tag = p.data?.messageId ?: p.tag)

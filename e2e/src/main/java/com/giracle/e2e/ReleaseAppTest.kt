@@ -231,7 +231,11 @@ class ReleaseAppTest {
         device.openNotification()
         val pn = device.wait(Until.findObject(By.textContains("プッシュテスト")), 60_000)
         shot("push_notification")
-        if (pn == null) fail("プッシュ通知が届かない (プロセスを終わらせた: $killed)")
+        if (pn == null) {
+            // 手がかり: アプリの通知の一覧と、アプリのプロセスがあるか
+            Log.w(TAG, "notifications:\n" + shell("dumpsys notification --noredact").lines().filter { pkg in it || "android.title" in it || "android.text" in it }.take(40).joinToString("\n"))
+            fail("プッシュ通知が届かない (プロセスを終わらせた: $killed、今のプロセス: ${shell("pidof $pkg").trim()})")
+        }
         device.pressBack()
     }
 
