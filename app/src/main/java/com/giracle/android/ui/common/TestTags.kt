@@ -14,6 +14,8 @@ object TestTags {
     // 画面全体 (Root で各画面を包む)
     const val SCREEN_LOGIN = "screen.login"
     const val SCREEN_HOME = "screen.home"
+    /** 幅の広い画面で、チャンネルを開いていないときの右側 (#29) */
+    const val TWO_PANE_EMPTY = "twopane.empty"
     const val SCREEN_CHANNEL = "screen.channel"
     const val SCREEN_CHANNEL_SETTINGS = "screen.channel_settings"
     const val SCREEN_INBOX = "screen.inbox"
