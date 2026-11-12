@@ -37,3 +37,5 @@ google-services.json
 # 署名関連 (公開リポジトリのため絶対にコミットしない)
 keystore.properties
 keystore/
+*.p12
+dist/
