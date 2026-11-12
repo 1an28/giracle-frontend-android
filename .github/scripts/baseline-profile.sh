@@ -36,7 +36,13 @@ case "$MODE" in
     t0=$(date +%s)
     if ! run BaselineProfileGenerator generate; then
       echo "::error::Baseline Profile の記録が失敗した"
-      "$ADB" logcat -d | grep -E "Benchmark|BaselineProfile|AndroidRuntime|TestRunner" | tail -n 80
+      # 端末との接続が切れていると adb は待ち続けるので、時間の上限を付ける (2026-11-12 に 16 分止まった)
+      if [ "$(timeout 10 "$ADB" get-state 2>/dev/null)" != "device" ]; then
+        echo "::error::エミュレータとの接続が切れた (エミュレータ側の問題。ログの末尾を出す)"
+        tail -n 40 "$HOME/emulator.log" || true
+      else
+        timeout 30 "$ADB" logcat -d | grep -E "Benchmark|BaselineProfile|AndroidRuntime|TestRunner" | tail -n 80
+      fi
       exit 1
     fi
     echo "generate: $(( $(date +%s) - t0 ))s"
