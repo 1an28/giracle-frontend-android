@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -120,7 +121,10 @@ class WsClient(
                 webSocket.close(1000, null)
                 return
             }
-            scope.launch { _frames.emit(frame) }
+            // 受け取った順に渡す。以前は 1 件ごとに launch しており、複数のスレッドで動くため
+            // 「送信」より先に「編集」が届くなど、順番が入れ替わることがあった。
+            // 普段は空きがあるので tryEmit で済む。詰まったときだけ受信スレッドを待たせる (取りこぼさない)
+            if (!_frames.tryEmit(frame)) runBlocking { _frames.emit(frame) }
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onEnd(webSocket)
