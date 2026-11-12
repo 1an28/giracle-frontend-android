@@ -15,6 +15,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # 依存ライブラリと Gradle の取得を前回の実行から使い回し、待ち時間を減らす (#31)
+          cache: gradle
       # ランナーに入っている Android SDK を使う。足りないものだけ入れる
       # (android-actions/setup-android は廃止済みの "tools" を入れようとして失敗するため使わない)
       - name: Install SDK packages

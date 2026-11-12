@@ -22,6 +22,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # 依存ライブラリと Gradle の取得を前回の実行から使い回し、待ち時間を減らす (#31)
+          cache: gradle
       - name: Install SDK packages
         run: .github/scripts/sdk-install.sh
       # 配布版は debug 鍵で署名する (R8 の処理は本物の配布版と同じ。鍵は Secrets を使わない)

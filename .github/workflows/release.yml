@@ -29,6 +29,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          # 依存ライブラリと Gradle の取得を前回の実行から使い回し、待ち時間を減らす (#31)
+          cache: gradle
       - name: Install SDK packages
         run: .github/scripts/sdk-install.sh
 
