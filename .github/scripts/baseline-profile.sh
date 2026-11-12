@@ -39,13 +39,17 @@ case "$MODE" in
     fi
     echo "generate: $(( $(date +%s) - t0 ))s"
     "$ADB" pull "/sdcard/Android/media/$TEST_PKG" "$OUT/media" > /dev/null
-    PROF=$(find "$OUT/media" -name '*-baseline-prof.txt' | grep -v startup | head -1)
+    # 書き出される名前はライブラリの版で違う (1.5.0 は includeInStartupProfile のとき *-startup-prof.txt だけを書く)。
+    # 日時の付いていない方を使う
+    PROF=$(find "$OUT/media" -name '*-baseline-prof.txt' ! -name '*-20[0-9][0-9]-*' | head -1)
+    [ -n "$PROF" ] || PROF=$(find "$OUT/media" -name '*-startup-prof.txt' ! -name '*-20[0-9][0-9]-*' | head -1)
     if [ -z "$PROF" ]; then echo "::error::記録した Baseline Profile が見つからない"; find "$OUT/media"; exit 1; fi
     {
       echo "# Baseline Profile (#8、D-021)。CI のエミュレータで、起動とよく使う流れ (チャンネルを開いてスクロール・設定) を記録したもの。"
       echo "# .github/scripts/baseline-profile.sh が生成する。手で書き換えない。"
       cat "$PROF"
     } > app/src/main/baseline-prof.txt
+    echo "profile: $PROF"
     echo "rules: $(grep -vc '^#' app/src/main/baseline-prof.txt) (アプリ: $(grep -c 'com/giracle/android' app/src/main/baseline-prof.txt))"
     ;;
   measure)

@@ -40,7 +40,10 @@ jobs:
         timeout-minutes: 20
         run: .github/scripts/baseline-profile.sh generate app/build/outputs/apk/nonMinifiedRelease/app-nonMinifiedRelease.apk
       - name: Build release APK with the recorded profile
-        run: ./gradlew :app:assembleRelease && cp app/build/outputs/apk/release/app-release.apk apks/after.apk
+        run: |
+          ./gradlew :app:assembleRelease && cp app/build/outputs/apk/release/app-release.apk apks/after.apk
+          # 配布版の大きさの変化 (記録した Baseline Profile は APK に入る)
+          ls -l apks/
       - name: Measure startup (before)
         timeout-minutes: 15
         run: .github/scripts/baseline-profile.sh measure apks/before.apk before
