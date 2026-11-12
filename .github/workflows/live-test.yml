@@ -4,9 +4,18 @@ name: live-test
 # サーバーは参照先 (giracle-backend / giracle-frontend-solid) の最新版を取ってきて使う (D-016)。
 on:
   # PR のブランチは pull_request で走るので、push は main だけにする (同じコミットで 2 回走らせない。#31)
+  # 文書だけの変更では走らせない (アプリに影響しないため。D-024)
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "releases/notes/**"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "releases/notes/**"
+      - "**/*.md"
   workflow_dispatch:
 
 # 同じブランチに続けて push したときは、古い実行を取り消す

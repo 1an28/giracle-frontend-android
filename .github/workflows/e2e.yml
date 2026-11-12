@@ -3,9 +3,18 @@ name: e2e
 # 配布版 (R8 適用後) の APK をエミュレータに入れ、ランナー上のサーバーにつないで外から操作して確かめる (#12)。
 # 実行するタイミングは D-018 を参照。
 on:
+  # 文書だけの変更では走らせない (アプリに影響しないため。D-024)
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "releases/notes/**"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "releases/notes/**"
+      - "**/*.md"
   workflow_dispatch:
 
 concurrency:
