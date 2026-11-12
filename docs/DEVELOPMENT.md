@@ -9,7 +9,7 @@
 ## ビルド
 
 ```bash
-./gradlew :app:assembleDebug     # 開発版 (com.giracle.android.debug、「Giracle Native (dev)」)
+./gradlew :app:assembleDebug     # 開発版 (io.github.u1an28.giracle.kotlin.debug、「Giracle Native (dev)」)
 ./gradlew :app:assembleRelease   # 配布版 (R8 で縮小、約 2MB)
 ```
 

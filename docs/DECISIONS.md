@@ -44,7 +44,7 @@
 
 ## D-003 Flutter 版と同じ端末に並べて入れられるようにする
 
-- Flutter 版の applicationId は `com.giracle.giracle`。本アプリは `com.giracle.android` とし、
+- Flutter 版の applicationId は `com.giracle.giracle`。本アプリは `com.giracle.android` とし (D-015 で変更)、
   アプリ名も「Giracle Native」にしてホーム画面で区別できるようにする。
 
 ## D-004 署名鍵をリポジトリに入れない
@@ -141,3 +141,17 @@
   署名済み APK は不要になったので削除した (Secrets が使えないときの予備の仕組みはワークフローに残す)。
 - タグの push ができない環境 (このセッションの Git 権限) でも出せるよう、release ワークフローは手動実行にも対応し、
   そのときはワークフロー自身がタグを付ける。
+
+## D-015 アプリの識別名 (applicationId) を持ち主の名前空間に移す
+
+- **判断**: applicationId を `com.giracle.android` から `io.github.u1an28.giracle.kotlin` に変える
+  (開発版は `.debug` が付く)。持ち主が方針を決め ([#9](https://github.com/1an28/giracle-frontend-kotlin/issues/9))、
+  名前の形は「持ち主の名前と Kotlin 版であることが分かる」という条件で Claude が決めた。
+- **理由**
+  - `com.giracle.*` は Giracle の作者側の名前空間に見え、公式アプリが出たときにぶつかるおそれがある。
+  - GitHub ユーザー名 `1an28` は数字で始まるが、applicationId の各部分は英字で始める決まりがあるため、先頭に `u` を付けた。
+  - 識別名を変えると別アプリ扱いになり、入れてある版に上書き更新できない。利用者が少ない今のうちに変える。
+- **変えなかったもの**: `namespace` とコードのパッケージ名 (`com.giracle.android`)。利用者からは見えず、
+  変えても全ファイルの差分が増えるだけのため。署名鍵と証明書の指紋 (`releases/SIGNING_CERT_SHA256`) も変わらない。
+- **利用者への影響**: 新しい版を入れ直してログインし直す。古い版 (`com.giracle.android`) は手で消す。
+- **代替案**: `io.github.ian28...` のように読み替える、独自ドメインを使う。どちらも持ち主の名前とずれるため採らなかった。
