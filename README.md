@@ -9,7 +9,7 @@
 - アプリを閉じていても通知を受け取れる。ただし、端末に UnifiedPush の配信アプリ (ntfy など) を入れ、
   サーバーに VAPID 鍵が設定されている必要がある。配信アプリを使わない場合は、常時接続の設定で受け取れる (電池を多めに使う)
 - Flutter 版 ([giracle-frontend-flutter](https://github.com/ayok01/giracle-frontend-flutter)、`com.giracle.giracle`) とは
-  別アプリ (`com.giracle.android`、表示名「Giracle Native」) なので、同じ端末に並べて入れられる
+  別アプリ (`io.github.u1an28.giracle.kotlin`、表示名「Giracle Native」) なので、同じ端末に並べて入れられる
 
 ## 入れ方
 

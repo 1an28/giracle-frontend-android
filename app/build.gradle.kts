@@ -17,8 +17,9 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // Flutter 版 (com.giracle.giracle) と並べて入れられるよう別の ID にする
-        applicationId = "com.giracle.android"
+        // 持ち主 (GitHub: 1an28) の名前空間にする (D-015)。各部分は英字で始める決まりがあるので先頭に u を付ける。
+        // namespace (コードのパッケージ名) は変えない。利用者には見えず、変えると差分が大きくなるだけなので。
+        applicationId = "io.github.u1an28.giracle.kotlin"
         minSdk = 26
         targetSdk = 37
         versionCode = 1

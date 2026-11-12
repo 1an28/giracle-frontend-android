@@ -13,7 +13,7 @@
   配布版 (R8 適用後) が動くかは確かめられていない (#12)。
 - 配布 APK は CI (release.yml) が Secrets の鍵で署名する。署名鍵はリポジトリに入れない。
   この環境からはタグを push できないので、リリースは release ワークフローの手動実行で出す。
-- applicationId を変えると、入れてあるアプリに上書き更新できなくなる (#9)。
+- applicationId は `io.github.u1an28.giracle.kotlin` (D-015)。変えると、入れてあるアプリに上書き更新できなくなる。
 
 ## 書き方
 
