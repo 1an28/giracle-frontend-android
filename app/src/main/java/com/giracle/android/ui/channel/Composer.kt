@@ -105,6 +105,8 @@ class Attachment(val uri: Uri, val name: String, val size: Long) {
     var progress by mutableStateOf(0f)
     var fileId by mutableStateOf<String?>(null)
     var error by mutableStateOf<String?>(null)
+    /** 電波が無くて失敗した (つながったら自動でやり直す。#36) */
+    var waitingNetwork by mutableStateOf(false)
     var job: Job? = null
 }
 
@@ -212,8 +214,26 @@ fun Composer(
                 val counting = UploadFile(base.name, base.mime, ProgressBody(base.body) { a.progress = it })
                 a.fileId = graph.api.uploadFile(channelId, counting)
                 a.progress = 1f
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                a.error = e.userMessage()
+                if (Outbox.isNetworkFailure(e)) {
+                    a.waitingNetwork = true
+                    a.error = "つながったら自動でやり直します"
+                } else a.error = e.userMessage()
+            }
+        }
+    }
+    // 電波が無くて失敗した添付は、つながったら (WebSocket の接続) やり直す (#36)
+    LaunchedEffect(attachments) {
+        graph.ws.state.collect { st ->
+            if (st == com.giracle.android.data.net.WsClient.State.Connected) {
+                attachments.filter { it.waitingNetwork }.forEach { a ->
+                    a.waitingNetwork = false
+                    a.error = null
+                    a.progress = 0f
+                    upload(a)
+                }
             }
         }
     }
@@ -248,7 +268,8 @@ fun Composer(
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { addUris(it) }
     var attachMenu by remember { mutableStateOf(false) }
 
-    val uploading = attachments.any { it.fileId == null && it.error == null }
+    // 電波待ちの添付があるときも送らせない (添付が抜けたまま送られないように。外せば送れる)
+    val uploading = attachments.any { (it.fileId == null && it.error == null) || it.waitingNetwork }
     val text = state.text.toString()
     val tooLong = text.length > server.messageMaxLength
     val canSend = !sending && !uploading && !tooLong && (text.isNotBlank() || attachments.any { it.fileId != null })
