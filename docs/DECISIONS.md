@@ -192,7 +192,6 @@
   - 入力欄の周りにボタンを増やすと、送信や添付の押し間違いが増える。スワイプは返信など他の操作と取り合いになる。
   - 実機で使ってみて不便だと分かったら、そのとき Issue を開き直す。
 - **代替案**: 入力欄が空のときの「直前のメッセージを編集」ボタン、送信直後の「編集」ボタン、スワイプ、外付けキーボードの ↑ キー。
-<<<<<<< HEAD
 
 ## D-018 配布版をエミュレータで外から確かめる (e2e)
 ([#12](https://github.com/1an28/giracle-frontend-kotlin/issues/12))
@@ -229,5 +228,3 @@
 - **#8 (Baseline Profile) で流用できるもの**: エミュレータの起動 (`.github/scripts/emulator-start.sh`)、サーバー
   (`.github/actions/local-server`)、`com.android.test` + self-instrumenting のモジュールの形 (`e2e/build.gradle.kts`)。
   Baseline Profile Gradle Plugin は Gradle 管理の端末も使えるが、ここでは同じ起動スクリプトを使えば、サーバーの用意も共有できる。
-=======
->>>>>>> origin/claude/clever-babbage-mj77sl
