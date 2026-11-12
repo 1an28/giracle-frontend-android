@@ -25,10 +25,14 @@ else
 fi
 
 t0=$(date +%s)
-yes | "$SDKM" --licenses > /dev/null || true
+yes 2> /dev/null | "$SDKM" --licenses > /dev/null || true
 # 入れるときにもライセンスの同意を尋ねることがあるので、yes を渡す (渡さないと入力待ちで止まる)
-yes | timeout 600 "$SDKM" "emulator" "platform-tools" "$IMAGE" > "$HOME/sdkmanager.log" 2>&1 \
-  || { tail -n 30 "$HOME/sdkmanager.log" >&2; exit 1; }
+# (yes は書き込み先が閉じると SIGPIPE で終わるので、pipefail を外して sdkmanager の結果だけを見る)
+set +o pipefail
+yes 2> /dev/null | timeout 600 "$SDKM" "emulator" "platform-tools" "$IMAGE" > "$HOME/sdkmanager.log" 2>&1
+rc=${PIPESTATUS[1]}
+set -o pipefail
+if [ "$rc" != 0 ]; then tail -n 30 "$HOME/sdkmanager.log" >&2; exit 1; fi
 echo "sdk packages: $(( $(date +%s) - t0 ))s"
 "$SDK/emulator/emulator" -accel-check || true
 
