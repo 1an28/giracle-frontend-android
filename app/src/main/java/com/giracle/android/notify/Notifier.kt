@@ -73,7 +73,7 @@ object Notifier {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     /** チャンネルごとの、通知に出している最近のメッセージ (会話の形でまとめる。D-022) */
-    private class Line(val messageId: String?, val senderId: String?, val sender: String, val text: String, val time: Long)
+    private class Line(val messageId: String?, val senderId: String?, val sender: String, val text: String, val time: Long, val isMe: Boolean = false)
 
     /** 送信者のアイコン (丸く切り抜いたもの)。通知のたびに読み込まないよう覚えておく (#26) */
     private val icons = LruCache<String, IconCompat>(32)
@@ -104,11 +104,16 @@ object Notifier {
         return out
     }
     private val conversations = HashMap<String, ArrayDeque<Line>>()
+    /** チャンネルごとの、最後に出した通知の元 (自分の返信を足して出し直すときに使う。#38) */
+    private val lastNotices = HashMap<String, InAppNotice>()
     private const val MAX_LINES = 8
 
     private fun channelTag(channelId: String) = "ch:$channelId"
 
-    suspend fun post(context: Context, n: InAppNotice, tag: String? = null) {
+    /**
+     * @param ownReply 通知から送った自分の返信 (#38)。会話に「自分」の発言として足し、音は鳴らさずに出し直す
+     */
+    suspend fun post(context: Context, n: InAppNotice, tag: String? = null, ownReply: String? = null) {
         if (!canPost(context)) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -133,8 +138,13 @@ object Notifier {
             notifTag = channelTag(ch)
             val lines = synchronized(conversations) {
                 val q = conversations.getOrPut(ch) { ArrayDeque() }
-                if (n.messageId != null && q.any { it.messageId == n.messageId }) return
-                q.addLast(Line(n.messageId, n.senderId, n.sender ?: n.title, n.body, System.currentTimeMillis()))
+                if (ownReply != null) {
+                    q.addLast(Line(null, null, "自分", ownReply, System.currentTimeMillis(), isMe = true))
+                } else {
+                    if (n.messageId != null && q.any { it.messageId == n.messageId }) return
+                    q.addLast(Line(n.messageId, n.senderId, n.sender ?: n.title, n.body, System.currentTimeMillis()))
+                    lastNotices[ch] = n
+                }
                 while (q.size > MAX_LINES) q.removeFirst()
                 q.toList()
             }
@@ -148,6 +158,8 @@ object Notifier {
                 .setConversationTitle(channelName?.let { "#$it" })
                 .setGroupConversation(channelName != null)
             lines.forEach { l ->
+                // 自分の発言は送り手を null にする (MessagingStyle の決まり: null は利用者自身)
+                if (l.isMe) { style.addMessage(l.text, l.time, null as Person?); return@forEach }
                 val person = Person.Builder().setName(l.sender).apply {
                     if (l.senderId != null) setKey(l.senderId)
                     l.senderId?.let { iconsById[it] }?.let { setIcon(it) }
@@ -155,6 +167,7 @@ object Notifier {
                 style.addMessage(l.text, l.time, person)
             }
             builder.setStyle(style).setContentTitle(n.title).setContentText(n.body)
+            if (ownReply != null) builder.setOnlyAlertOnce(true).setSilent(true)
             n.senderId?.let { iconsById[it] }?.let { builder.setLargeIcon(it.toIcon(context)) }
             // チャンネルのショートカットと結び付けると、Android 11 以降で「会話」として通知欄の上段に出る (#26)
             ChannelShortcuts.publish(context, ch, channelName)
@@ -191,9 +204,22 @@ object Notifier {
         }
     }
 
+    /**
+     * 通知から送った返信を、その通知の会話に「自分」の発言として足す (#38)。
+     * 元の通知が分からない (プロセスが作り直された) ときは false (呼び出し側で通知を消す)
+     */
+    suspend fun appendOwnReply(context: Context, channelId: String, text: String): Boolean {
+        val last = synchronized(conversations) { lastNotices[channelId]?.takeIf { conversations.containsKey(channelId) } } ?: return false
+        post(context, last, ownReply = text)
+        return true
+    }
+
     /** チャンネルの通知を消す (そのチャンネルを開いたとき・通知のボタンで操作したとき) */
     fun cancelChannel(context: Context, channelId: String) {
-        synchronized(conversations) { conversations.remove(channelId) }
+        synchronized(conversations) {
+            conversations.remove(channelId)
+            lastNotices.remove(channelId)
+        }
         NotificationManagerCompat.from(context).cancel(channelTag(channelId), 0)
     }
 
