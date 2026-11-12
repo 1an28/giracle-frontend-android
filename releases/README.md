@@ -13,4 +13,6 @@ GitHub のリリースに添付する APK の置き場と、署名証明書の�
    - おすすめ: リポジトリの Settings > Secrets and variables > Actions に
      `KEYSTORE_BASE64` (`base64 -w0 giracle-native.p12` の出力) と `KEYSTORE_PASSWORD` を登録する。以後は CI がビルド・署名する
    - Secrets を使わない場合: 手元で `./gradlew :app:assembleRelease` し、`releases/giracle-native-vX.Y.Z.apk` として置いてコミット
-3. `git tag vX.Y.Z && git push origin vX.Y.Z` (または Actions の release ワークフローを手動実行)
+3. `git tag vX.Y.Z && git push origin vX.Y.Z`
+   - または GitHub の Actions > release > Run workflow で、main を選び `vX.Y.Z` を入れて実行
+     (main の最新コミットにタグが付く)
