@@ -34,6 +34,10 @@
 
 利用者側は、端末に UnifiedPush の配信アプリ (例: ntfy) を入れ、アプリの「設定 > 通知 > プッシュ通知」で有効にする。
 
+**本番サーバー (chat.girak.moe) の状況**: VAPID 鍵は設定済み。公開鍵を返す窓口
+(`GET https://chat.girak.moe/api/notification/vapid-public-key`) が鍵を返すことを、リポジトリの持ち主が確認した
+(2026-11-12)。そのため上の 1. は本番では対応済み。2. (配信サーバーへ出られるか) は未確認。
+
 **仕組み**: アプリは UnifiedPush から受け取った宛先 URL と鍵 (P-256 公開鍵・auth) を
 `POST /notification/device/register` に `platform: "web"` で登録する。サーバーは Web ブラウザと同じ方法
 (RFC 8030 + RFC 8291 aes128gcm + VAPID) で送り、配信アプリ経由で届いた暗号文をアプリが復号して通知を出す。

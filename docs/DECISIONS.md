@@ -68,6 +68,8 @@
 - **WebSocket の Origin**: バックエンドは Origin ヘッダが無いと 403、CORS_ORIGIN 設定時は一覧と一致しないと 403。
   ネイティブアプリには本来 Origin が無いため、サーバー URL から作った Origin (`https://chat.example.com`) を送る。
   Web 版と同じホストで運用していれば CORS_ORIGIN に含まれているはず。含まれていない場合は画面上部に案内を出す。
+- **Origin の扱いは暫定**: アプリが Web 版の Origin を名乗って接続するのは、今のサーバーで動かすための仮の方法。
+  アプリ向けの正式な接続方法 (サーバー側の入口) は友人 (サーバーの作者) と相談して決める予定 ([#7](https://github.com/1an28/giracle-frontend-kotlin/issues/7))。
 
 ## D-007 トークンは Cookie Jar を使わず自前で付ける
 
@@ -94,14 +96,17 @@
 - R8 (縮小・難読化) とリソース縮小、翻訳リソースの日本語・英語限定で release APK は約 2MB。
 - DI ライブラリなし、JSON は kotlinx.serialization (リフレクションなし)。
 
-## D-010 通知は 3 段構え
+## D-010 通知の受け取り方 (未決定)
 
-1. **アプリが前面**: WebSocket の受信を画面上部のバナーで知らせる (Web 版のブラウザ通知に相当)。
-2. **UnifiedPush (推奨)**: サーバーは既に Web Push (VAPID + aes128gcm) で通知を送れる。UnifiedPush の宛先は
-   Web Push と同じ形式なので、`platform: "web"` の端末として登録すれば **サーバーのコード変更なしで** 届く。
-   端末側に配信アプリ (ntfy など) が必要。サーバー管理者は VAPID 鍵を設定するだけ。
-3. **常時接続 (任意)**: 配信アプリを入れたくない人向けに、前面サービスで WebSocket を保ち続ける設定。電池を使う。
-- FCM (Google のプッシュ) は Firebase プロジェクトとサーバー側の実装が必要なため採用しない。詳細は SERVER_CHANGES.md。
+- **アプリが前面のとき**: WebSocket の受信を画面上部のバナーで知らせる (Web 版のブラウザ通知に相当)。これは確定。
+- **アプリを閉じているとき**: どの方法を標準にするかは **未決定**。着手するときに決める ([#6](https://github.com/1an28/giracle-frontend-kotlin/issues/6))。
+  今は次の 2 つを、利用者が設定で選べる形で実装してある。
+  - **UnifiedPush + 配信アプリ**: サーバーは既に Web Push (VAPID + aes128gcm) で通知を送れる。UnifiedPush の宛先は
+    Web Push と同じ形式なので、`platform: "web"` の端末として登録すれば サーバーのコード変更なしで 届く。
+    端末側に配信アプリ (ntfy など) が必要。サーバー管理者は VAPID 鍵を設定するだけ。
+  - **常時接続**: 前面サービスで WebSocket を保ち続ける設定。配信アプリは不要だが電池を使う。
+- **FCM (Google のプッシュ)** は、Firebase プロジェクトとサーバー側の実装が必要なため未実装。選ぶ場合はサーバーの
+  変更を友人と相談する。必要な変更は SERVER_CHANGES.md の S-2 にまとめてある。
 
 ## D-011 絵文字
 
