@@ -37,8 +37,8 @@ data class ClientSettings(
  * SharedPreferences ベースの保存先。
  * 起動を速くするため、DataStore ではなく同期読み出しできる SharedPreferences を使う (値は少量)。
  */
-class Prefs(context: Context) : TokenStore {
-    private val sp: SharedPreferences = context.getSharedPreferences("giracle", Context.MODE_PRIVATE)
+class Prefs(context: Context, name: String = "giracle") : TokenStore {
+    private val sp: SharedPreferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     var serverUrl: String?
         get() = sp.getString(K_SERVER, null)

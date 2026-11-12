@@ -374,10 +374,14 @@ class ChatStore(
         }
         readTimes.update { it + (channelId to newest) }
         hasNew.update { it - channelId }
+        pushReadTime(channelId, newest)
+    }
+
+    private fun pushReadTime(channelId: String, time: String) {
         readTimeJobs[channelId]?.cancel()
         readTimeJobs[channelId] = scope.launch {
             delay(300)
-            runCatching { api.updateReadTime(channelId, newest) }
+            runCatching { api.updateReadTime(channelId, time) }
         }
     }
 
@@ -553,9 +557,10 @@ class ChatStore(
         addMessage(m)
         ensureUser(m.userId)
         if (m.userId == myId) {
-            // 自分の送信は既読扱い
+            // 自分の送信は既読扱い (Web 版と同じくサーバーにも送る)
             readTimes.update { it + (m.channelId to m.createdAt) }
             readTimesBefore.update { it + (m.channelId to m.createdAt) }
+            pushReadTime(m.channelId, m.createdAt)
             return
         }
         if (!viewing) {

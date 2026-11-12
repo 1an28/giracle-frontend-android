@@ -154,9 +154,10 @@ fun Composer(
     fun addUris(uris: List<Uri>) {
         for (u in uris) {
             val size = ctx.fileSizeOf(u)
-            val name = ctx.uploadFileFrom(u).name
-            val a = Attachment(u, name, size)
+            val f = ctx.uploadFileFrom(u)
+            val a = Attachment(u, f.name, size)
             if (size >= 0 && size >= server.messageMaxFileSize) a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
+            else if (!com.giracle.android.ui.common.isUploadable(f.mime)) a.error = "この形式 (${f.mime}) はサーバーが受け付けません"
             attachments += a
             if (a.error == null) upload(a)
         }

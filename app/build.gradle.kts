@@ -106,3 +106,25 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)
 }
+
+// Robolectric は実行時に Android 本体の jar を自前でダウンロードするが、プロキシ環境では失敗するため、
+// Gradle で取得してオフラインモードで使う。
+val robolectricRuntime: Configuration by configurations.creating
+dependencies {
+    robolectricRuntime("org.robolectric:android-all-instrumented:15-robolectric-13954326-i7")
+}
+val robolectricDepsDir = layout.buildDirectory.dir("robolectric-deps")
+val copyRobolectricDeps by tasks.registering(Copy::class) {
+    from(robolectricRuntime)
+    into(robolectricDepsDir)
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(copyRobolectricDeps)
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", robolectricDepsDir.get().asFile.absolutePath)
+    // 実サーバー結合テスト用の環境変数を渡す
+    listOf("GIRACLE_TEST_SERVER", "GIRACLE_TEST_ADMIN_USER", "GIRACLE_TEST_ADMIN_PASS").forEach { k ->
+        System.getenv(k)?.let { environment(k, it) }
+    }
+    testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+}

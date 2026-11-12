@@ -187,7 +187,7 @@ fun Context.uploadFileFrom(uri: Uri): UploadFile {
             if (!c.isNull(1)) size = c.getLong(1)
         }
     }
-    val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+    val mime = normalizeMime(name, contentResolver.getType(uri))
     val resolver = contentResolver
     val body = object : okhttp3.RequestBody() {
         override fun contentType() = mime.toMediaTypeOrNull()
@@ -205,6 +205,33 @@ fun Context.uploadFileFrom(uri: Uri): UploadFile {
     }
     return UploadFile(name, mime, body)
 }
+
+/** サーバーが画像以外で受け付ける MIME (giracle-backend の Utils/SafeString.ts と同じ一覧) */
+val SERVER_SAFE_MIMES = setOf(
+    "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain", "text/csv", "application/zip", "application/x-7z-compressed", "application/x-rar-compressed",
+    "application/gzip", "application/x-tar", "application/x-bzip2", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
+    "audio/webm", "audio/aac", "audio/flac", "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/x-msvideo", "video/x-matroska",
+)
+
+/** 端末が返す MIME をサーバーの一覧に合わせる (不明・別名なら拡張子から推測) */
+fun normalizeMime(name: String, reported: String?): String {
+    val r = reported?.lowercase()?.substringBefore(';')?.trim()
+    val alias = mapOf("audio/x-wav" to "audio/wav", "audio/x-flac" to "audio/flac", "application/x-zip-compressed" to "application/zip", "audio/mp4a-latm" to "audio/mp4", "application/x-gzip" to "application/gzip")
+    if (r != null && (r.startsWith("image/") || r in SERVER_SAFE_MIMES)) return r
+    if (r != null && alias[r] != null) return alias[r]!!
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val guess = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)?.lowercase()
+    return when {
+        guess != null && (guess.startsWith("image/") || guess in SERVER_SAFE_MIMES) -> guess
+        guess != null && alias[guess] != null -> alias[guess]!!
+        else -> r ?: guess ?: "application/octet-stream"
+    }
+}
+
+fun isUploadable(mime: String) = mime.startsWith("image/") || mime in SERVER_SAFE_MIMES
 
 fun Context.fileSizeOf(uri: Uri): Long =
     contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
