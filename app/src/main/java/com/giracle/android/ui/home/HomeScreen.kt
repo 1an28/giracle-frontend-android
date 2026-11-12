@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.giracle.android.data.model.Channel
 import com.giracle.android.data.net.WsClient
 import com.giracle.android.ui.LocalNavigator
+import com.giracle.android.ui.PendingShare
 import com.giracle.android.ui.Screen
 import com.giracle.android.ui.common.AppIcons
 import com.giracle.android.ui.common.Avatar
@@ -119,6 +120,23 @@ fun HomeScreen(loading: Boolean) {
                     Text(label, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp), style = MaterialTheme.typography.bodySmall)
                 }
             }
+            // 他のアプリから共有されたものがあるとき、送り先のチャンネルを選んでもらう (D-020)
+            PendingShare.content?.let { share ->
+                item(key = "share", contentType = "share") {
+                    Row(
+                        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(start = 16.dp)
+                            .testTag(TestTags.HOME_SHARE_BANNER),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "共有された${share.description}を送るチャンネルを選んでください",
+                            Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        TextButton(onClick = { PendingShare.content = null }) { Text("やめる") }
+                    }
+                }
+            }
             item(key = "online", contentType = "nav") {
                 NavRow(AppIcons.People, "オンライン: ${online.size} 人") { nav.push(Screen.Members) }
             }
@@ -143,7 +161,10 @@ fun HomeScreen(loading: Boolean) {
             items(joined, key = { it.id }, contentType = { "channel" }) { c ->
                 ChannelRow(
                     c, unread = hasNew[c.id] == true, muted = c.id in muted, reorder = reorder,
-                    onClick = { nav.openChannel(c.id) },
+                    onClick = {
+                        if (PendingShare.content != null) PendingShare.target = c.id
+                        nav.openChannel(c.id)
+                    },
                     onMove = { delta ->
                         val ids = joined.map { it.id }.toMutableList()
                         val i = ids.indexOf(c.id)

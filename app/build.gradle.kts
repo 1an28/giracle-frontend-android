@@ -46,6 +46,14 @@ android {
             signingConfig = if (keystoreProps.isNotEmpty()) signingConfigs.getByName("release")
             else signingConfigs.getByName("debug")
         }
+        // Baseline Profile の記録用 (#8、D-021)。配布版と同じだが難読化しない (記録したクラス名がソースと同じになる)
+        create("nonMinifiedRelease") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"

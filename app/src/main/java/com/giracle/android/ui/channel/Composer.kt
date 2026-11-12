@@ -18,7 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.content.TransferableContent
+import androidx.compose.foundation.content.consume
+import androidx.compose.foundation.content.contentReceiver
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
@@ -35,6 +42,8 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +69,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.giracle.android.ui.PendingShare
 import com.giracle.android.ui.common.TestTags
 import com.giracle.android.data.model.Message
 import com.giracle.android.data.model.User
@@ -95,6 +105,7 @@ object Drafts {
     val text = HashMap<String, String>()
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Composer(
     channelId: String,
@@ -109,18 +120,21 @@ fun Composer(
     val scope = rememberCoroutineScope()
     val server by store.serverConfig.collectAsStateWithLifecycle()
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
-    var value by remember(channelId) { mutableStateOf(TextFieldValue(Drafts.text[channelId] ?: "")) }
+    // 入力欄の状態。キーボードからの画像の挿入 (contentReceiver) を受けるため、TextFieldState を使う (D-020)
+    val state = remember(channelId) { TextFieldState(Drafts.text[channelId] ?: "") }
     val attachments = remember(channelId) { mutableStateListOf<Attachment>() }
     var sending by remember { mutableStateOf(false) }
 
     // 編集モードに入ったら本文を差し替える
     LaunchedEffect(editing?.id) {
-        if (editing != null) value = TextFieldValue(editing.content, TextRange(editing.content.length))
+        if (editing != null) state.setTextAndPlaceCursorAtEnd(editing.content)
     }
-    LaunchedEffect(value.text, editing) { if (editing == null) Drafts.text[channelId] = value.text }
+    LaunchedEffect(state, editing) {
+        snapshotFlow { state.text.toString() }.collect { if (editing == null) Drafts.text[channelId] = it }
+    }
 
     // ---- メンション候補 ----
-    val mentionQuery = remember(value) { mentionQueryAt(value) }
+    val mentionQuery by remember(state) { derivedStateOf { mentionQueryAt(TextFieldValue(state.text.toString(), state.selection)) } }
     var candidates by remember { mutableStateOf<List<User>>(emptyList()) }
     LaunchedEffect(mentionQuery) {
         val q = mentionQuery?.second
@@ -132,10 +146,12 @@ fun Composer(
 
     fun insertMention(u: User) {
         val (start, _) = mentionQuery ?: return
-        val end = value.selection.start
+        val end = state.selection.start
         val token = "@<${u.id}> "
-        val t = value.text.replaceRange(start, end, token)
-        value = TextFieldValue(t, TextRange(start + token.length))
+        state.edit {
+            replace(start, end, token)
+            selection = TextRange(start + token.length)
+        }
         candidates = emptyList()
     }
 
@@ -164,12 +180,25 @@ fun Composer(
             if (a.error == null) upload(a)
         }
     }
+    // 他のアプリの「共有」から来たもの (送り先にこのチャンネルが選ばれた)。D-020
+    val share = PendingShare.content
+    val shareTarget = PendingShare.target
+    LaunchedEffect(share, shareTarget, editing) {
+        if (share == null || shareTarget != channelId || editing != null) return@LaunchedEffect
+        PendingShare.content = null
+        PendingShare.target = null
+        if (share.uris.isNotEmpty()) addUris(share.uris)
+        share.text?.takeIf { it.isNotBlank() }?.let { t ->
+            val cur = state.text.toString()
+            state.setTextAndPlaceCursorAtEnd(if (cur.isBlank()) t else "$cur\n$t")
+        }
+    }
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { addUris(it) }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { addUris(it) }
     var attachMenu by remember { mutableStateOf(false) }
 
     val uploading = attachments.any { it.fileId == null && it.error == null }
-    val text = value.text
+    val text = state.text.toString()
     val tooLong = text.length > server.messageMaxLength
     val canSend = !sending && !uploading && !tooLong && (text.isNotBlank() || attachments.any { it.fileId != null })
 
@@ -181,7 +210,7 @@ fun Composer(
             scope.launch {
                 try {
                     graph.api.edit(editing.id, body)
-                    value = TextFieldValue(Drafts.text[channelId] ?: "")
+                    state.setTextAndPlaceCursorAtEnd(Drafts.text[channelId] ?: "")
                     onCancelEdit()
                 } catch (e: Exception) { ctx.toast(e.userMessage()) } finally { sending = false }
             }
@@ -190,9 +219,9 @@ fun Composer(
         val ids = attachments.mapNotNull { it.fileId }
         val reply = replyTo?.id
         // 送信前に入力欄を空にして、すぐ次を打てるようにする (失敗したら戻す)
-        val keep = value
+        val keep = body
         val keepAttach = attachments.toList()
-        value = TextFieldValue("")
+        state.clearText()
         attachments.clear()
         onCancelReply()
         sending = true
@@ -201,7 +230,7 @@ fun Composer(
                 store.send(channelId, body, ids, reply)
                 Drafts.text.remove(channelId)
             } catch (e: Exception) {
-                value = keep
+                state.setTextAndPlaceCursorAtEnd(keep)
                 attachments.addAll(keepAttach)
                 ctx.toast("送信できませんでした: ${e.userMessage()}")
             } finally { sending = false }
@@ -251,11 +280,15 @@ fun Composer(
                     }
                 }
                 TextField(
-                    value = value, onValueChange = { value = it },
+                    state = state,
                     modifier = Modifier.weight(1f).heightIn(max = 180.dp).testTag(TestTags.COMPOSER_INPUT).onPreviewKeyEvent { e ->
                         // ハードウェアキーボード: Enter で送信 (設定 ON 時)、Shift+Enter で改行
                         if (settings.sendWithEnter && e.type == KeyEventType.KeyDown && e.key == Key.Enter && !e.isShiftPressed) { submit(); true } else false
-                    },
+                    }.then(
+                        // キーボード (Gboard など) の画像・GIF・ステッカーの挿入と、長押しメニューの「貼り付け」の画像を添付として受ける。
+                        // 編集中は添付できないので受けない (文字の貼り付けはそのまま入力欄に入る)
+                        if (editing == null) Modifier.contentReceiver { content -> receiveMedia(content) { addUris(it) } } else Modifier
+                    ),
                     placeholder = { Text("メッセージを入力") },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
@@ -296,6 +329,18 @@ private fun AttachmentChip(a: Attachment, onRemove: () -> Unit) {
         }
         IconButton(onClick = onRemove) { Icon(Icons.Default.Close, "外す", Modifier.size(16.dp)) }
     }
+}
+
+/**
+ * 入力欄に届いた内容 (キーボードの画像挿入・貼り付け) のうち、URI を持つもの (画像など) を取り出して [onUris] に渡す。
+ * 文字だけのものは残して返し、入力欄にそのまま入れさせる。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+internal fun receiveMedia(content: TransferableContent, onUris: (List<Uri>) -> Unit): TransferableContent? {
+    val uris = ArrayList<Uri>()
+    val rest = content.consume { item -> item.uri?.let { uris += it; true } ?: false }
+    if (uris.isNotEmpty()) onUris(uris)
+    return rest
 }
 
 /** カーソル直前の "@xxx" を探す。(開始位置, 検索語) を返す */

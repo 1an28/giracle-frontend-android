@@ -112,7 +112,14 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
 
     // 前回開いていたチャンネルを復元 (起動直後に即座に表示する)
     LaunchedEffect(Unit) {
+        // 共有から開かれたときは、送り先を選んでもらうためホームのままにする
+        if (PendingShare.content != null) return@LaunchedEffect
         graph.prefs.lastChannelId?.let { if (pendingOpen.value == null) nav.openChannel(it) }
+    }
+    // 共有を受け取ったら、送り先のチャンネルを選べるようホームに戻る (D-020)
+    val share = PendingShare.content
+    LaunchedEffect(share) {
+        if (share != null) nav.reset()
     }
     // 通知から開かれたとき
     val pending = pendingOpen.value

@@ -1,0 +1,55 @@
+name: baseline-profile
+
+# Baseline Profile をエミュレータで記録し、起動時間を「記録前 (ワイルドカード規則) / 記録後 / 事前コンパイルなし」で比べる (#8、D-021)。
+# 記録したものは成果物 baseline-profile に残す。配布版への取り込みは release.yml が同じスクリプトで行う。
+on:
+  pull_request:
+    paths:
+      - "baselineprofile/**"
+      - ".github/scripts/baseline-profile.sh"
+      - ".github/workflows/baseline-profile.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: baseline-profile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install SDK packages
+        run: .github/scripts/sdk-install.sh
+      # 比較用に、今の (ワイルドカード規則の) Baseline Profile で配布版を作っておく
+      - name: Build APKs
+        run: |
+          ./gradlew :app:assembleNonMinifiedRelease :app:assembleRelease :baselineprofile:assembleDebug
+          mkdir -p apks && cp app/build/outputs/apk/release/app-release.apk apks/before.apk
+      - uses: ./.github/actions/local-server
+      - name: Start emulator
+        timeout-minutes: 15
+        run: .github/scripts/emulator-start.sh
+      - name: Record Baseline Profile
+        timeout-minutes: 20
+        run: .github/scripts/baseline-profile.sh generate app/build/outputs/apk/nonMinifiedRelease/app-nonMinifiedRelease.apk
+      - name: Build release APK with the recorded profile
+        run: ./gradlew :app:assembleRelease && cp app/build/outputs/apk/release/app-release.apk apks/after.apk
+      - name: Measure startup (before)
+        timeout-minutes: 15
+        run: .github/scripts/baseline-profile.sh measure apks/before.apk before
+      - name: Measure startup (after)
+        timeout-minutes: 15
+        run: .github/scripts/baseline-profile.sh measure apks/after.apk after
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: baseline-profile
+          path: |
+            app/src/main/baseline-prof.txt
+            bp-out/
