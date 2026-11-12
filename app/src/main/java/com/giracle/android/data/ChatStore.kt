@@ -65,7 +65,14 @@ data class Snapshot(
 )
 
 /** アプリ内通知 (画面上部のバナーや Android 通知に使う) */
-data class InAppNotice(val title: String, val body: String, val channelId: String?, val messageId: String?)
+data class InAppNotice(
+    val title: String,
+    val body: String,
+    val channelId: String?,
+    val messageId: String?,
+    /** 送信者の表示名 (通知を会話の形にするのに使う。分からなければ null) */
+    val sender: String? = null,
+)
 
 /**
  * ログイン後の状態をすべて持つストア。
@@ -551,7 +558,7 @@ class ChatStore(
                 if (prefs.settings.value.notifyInbox && msg.channelId !in mutedChannels.value && notificationConfig.value.let { it.enabled && it.mode != "off" }) {
                     val name = users.value[msg.userId]?.displayName ?: "誰か"
                     val title = if (type == "reply") "$name さんからの返信" else "$name さんからのメンション"
-                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id))
+                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id, sender = name))
                 }
             }
             "inbox::Deleted" -> {
@@ -630,9 +637,10 @@ class ChatStore(
             val cfg = notificationConfig.value
             val wantsAll = cfg.mode == "all" || prefs.settings.value.notifyAll
             if (!m.isSystemMessage && cfg.enabled && cfg.mode != "off" && wantsAll && m.channelId !in mutedChannels.value) {
-                val name = users.value[m.userId]?.displayName ?: "新着メッセージ"
+                val known = users.value[m.userId]?.displayName
+                val name = known ?: "新着メッセージ"
                 val ch = channels.value.firstOrNull { it.id == m.channelId }?.name
-                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id))
+                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id, sender = known))
             }
         }
     }

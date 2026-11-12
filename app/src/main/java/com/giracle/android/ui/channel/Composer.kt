@@ -86,6 +86,7 @@ import com.giracle.android.ui.common.uploadFileFrom
 import com.giracle.android.ui.common.userMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import okio.BufferedSink
 import okio.ForwardingSink
@@ -100,9 +101,36 @@ class Attachment(val uri: Uri, val name: String, val size: Long) {
     var job: Job? = null
 }
 
-/** チャンネルごとの下書き (アプリ起動中のみ保持) */
+/**
+ * チャンネルごとの下書き。打っている間はメモリに持ち、少し間を置いて端末に保存する
+ * (アプリのプロセスが終わっても残る。ログアウトで消す)。
+ */
 object Drafts {
-    val text = HashMap<String, String>()
+    private val mem = HashMap<String, String>()
+    @Volatile private var sp: android.content.SharedPreferences? = null
+
+    private fun prefs(ctx: android.content.Context) =
+        sp ?: ctx.applicationContext.getSharedPreferences("drafts", android.content.Context.MODE_PRIVATE).also { sp = it }
+
+    fun get(ctx: android.content.Context, channelId: String): String = mem[channelId] ?: prefs(ctx).getString(channelId, null).orEmpty()
+
+    fun set(channelId: String, text: String) { mem[channelId] = text }
+
+    /** メモリの内容を端末に書く */
+    fun persist(ctx: android.content.Context, channelId: String) {
+        val t = mem[channelId] ?: return
+        prefs(ctx).edit().apply { if (t.isBlank()) remove(channelId) else putString(channelId, t) }.apply()
+    }
+
+    fun remove(ctx: android.content.Context, channelId: String) {
+        mem.remove(channelId)
+        prefs(ctx).edit().remove(channelId).apply()
+    }
+
+    fun clear(ctx: android.content.Context) {
+        mem.clear()
+        prefs(ctx).edit().clear().apply()
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -121,7 +149,7 @@ fun Composer(
     val server by store.serverConfig.collectAsStateWithLifecycle()
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
     // 入力欄の状態。キーボードからの画像の挿入 (contentReceiver) を受けるため、TextFieldState を使う (D-020)
-    val state = remember(channelId) { TextFieldState(Drafts.text[channelId] ?: "") }
+    val state = remember(channelId) { TextFieldState(Drafts.get(ctx, channelId)) }
     val attachments = remember(channelId) { mutableStateListOf<Attachment>() }
     var sending by remember { mutableStateOf(false) }
 
@@ -130,7 +158,12 @@ fun Composer(
         if (editing != null) state.setTextAndPlaceCursorAtEnd(editing.content)
     }
     LaunchedEffect(state, editing) {
-        snapshotFlow { state.text.toString() }.collect { if (editing == null) Drafts.text[channelId] = it }
+        snapshotFlow { state.text.toString() }.collectLatest {
+            if (editing != null) return@collectLatest
+            Drafts.set(channelId, it)
+            delay(500) // 打つたびに書かないよう、手が止まってから保存する
+            Drafts.persist(ctx, channelId)
+        }
     }
 
     // ---- メンション候補 ----
@@ -210,7 +243,7 @@ fun Composer(
             scope.launch {
                 try {
                     graph.api.edit(editing.id, body)
-                    state.setTextAndPlaceCursorAtEnd(Drafts.text[channelId] ?: "")
+                    state.setTextAndPlaceCursorAtEnd(Drafts.get(ctx, channelId))
                     onCancelEdit()
                 } catch (e: Exception) { ctx.toast(e.userMessage()) } finally { sending = false }
             }
@@ -228,7 +261,7 @@ fun Composer(
         scope.launch {
             try {
                 store.send(channelId, body, ids, reply)
-                Drafts.text.remove(channelId)
+                Drafts.remove(ctx, channelId)
             } catch (e: Exception) {
                 state.setTextAndPlaceCursorAtEnd(keep)
                 attachments.addAll(keepAttach)

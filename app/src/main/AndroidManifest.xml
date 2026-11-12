@@ -49,6 +49,11 @@
             </intent-filter>
         </service>
 
+        <!-- 通知の「返信」「既読にする」ボタン (D-022) -->
+        <receiver
+            android:name=".notify.NotificationActionReceiver"
+            android:exported="false" />
+
         <!-- 設定で「バックグラウンドでも接続を保つ」を ON にしたときだけ動く -->
         <service
             android:name=".notify.ConnectionService"

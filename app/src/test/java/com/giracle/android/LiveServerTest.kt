@@ -174,5 +174,23 @@ class LiveServerTest {
         Unit
     }
 
+    /** 管理者によるパスワードのリセット (D-022): 新しいパスワードでログインでき、古いものは使えなくなる */
+    @Test fun adminResetsPassword() = runBlocking {
+        assumeTrue("GIRACLE_TEST_SERVER 未指定のためスキップ", server != null)
+        val suffix = System.currentTimeMillis().toString().takeLast(6)
+        val admin = client("admin-reset")
+        admin.api.signIn(System.getenv("GIRACLE_TEST_ADMIN_USER") ?: "admin", System.getenv("GIRACLE_TEST_ADMIN_PASS") ?: "password123")
+        admin.api.createInvite("rst$suffix", 1)
+        val c = client("carol")
+        c.api.signUp("carol$suffix", "pass1234", "rst$suffix")
+        val cId = c.api.signIn("carol$suffix", "pass1234").userId
+        val pw = admin.api.resetPassword(cId)
+        assertTrue(pw.length >= 8)
+        val c2 = client("carol2")
+        assertEquals(cId, c2.api.signIn("carol$suffix", pw).userId)
+        val old = runCatching { client("carol3").api.signIn("carol$suffix", "pass1234") }
+        assertTrue("古いパスワードでログインできてしまう", old.isFailure)
+    }
+
     @Suppress("unused") private fun dummy(m: Message) = m
 }

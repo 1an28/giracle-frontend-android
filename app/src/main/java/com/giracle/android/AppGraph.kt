@@ -158,6 +158,7 @@ class AppGraph(context: Context) {
         }
         store.stop()
         prefs.clearSession()
+        com.giracle.android.ui.channel.Drafts.clear(appContext)
         snapshotFile.delete()
         // 状態を捨てて作り直す
         _store.value = ChatStore(api, ws, prefs, scope)

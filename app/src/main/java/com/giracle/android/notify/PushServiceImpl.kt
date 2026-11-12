@@ -43,7 +43,9 @@ class PushServiceImpl : PushService() {
         val p = runCatching { AppJson.decodeFromString(PushPayload.serializer(), message.content.decodeToString()) }.getOrNull() ?: return
         // 前面にいてリアルタイム接続があるなら、画面内の通知で足りる
         if (graph.store.appInForeground && graph.ws.state.value == com.giracle.android.data.net.WsClient.State.Connected) return
-        Notifier.post(this, InAppNotice(p.title, graph.store.plainText(p.body), p.data?.channelId, p.data?.messageId), tag = p.data?.messageId ?: p.tag)
+        // 題は「<名前> さんからのメンション」の形 (giracle-backend の SendMessageNotifications.ts)。名前を取り出して会話の形にする
+        val sender = SENDER.find(p.title)?.groupValues?.get(1)
+        Notifier.post(this, InAppNotice(p.title, graph.store.plainText(p.body), p.data?.channelId, p.data?.messageId, sender = sender), tag = p.data?.messageId ?: p.tag)
     }
 
     override fun onRegistrationFailed(reason: FailedReason, instance: String) {
@@ -59,5 +61,8 @@ class PushServiceImpl : PushService() {
         }
     }
 
-    private companion object { const val TAG = "GiraclePush" }
+    private companion object {
+        const val TAG = "GiraclePush"
+        val SENDER = Regex("^(.+) さんからの")
+    }
 }

@@ -168,6 +168,8 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
     val me by store.me.collectAsStateWithLifecycle()
     var roleEdit by remember { mutableStateOf(false) }
     var confirmBan by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    var newPassword by remember { mutableStateOf<String?>(null) }
     val bot by produceState<com.giracle.android.data.model.BotInfo?>(null, u?.isBot) { if (u?.isBot == true) value = runCatching { graph.api.botByRemoteUser(userId) }.getOrNull() }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -204,6 +206,12 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
                     OutlinedButton(onClick = { confirmBan = true }) { Text(if (u?.isBanned == true) "BAN 解除" else "BAN", color = MaterialTheme.colorScheme.error) }
                 }
             }
+            // パスワードを忘れた人のために、管理者が作り直す (Web 版には無い。D-022)
+            if (store.can("manageServer") && userId != me?.id && u?.isBot != true) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    OutlinedButton(onClick = { confirmReset = true }) { Text("パスワードをリセット") }
+                }
+            }
             Spacer(Modifier.height(8.dp))
         }
     }
@@ -229,6 +237,45 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
                 }
             },
             confirmButton = { TextButton(onClick = { roleEdit = false }) { Text("閉じる") } },
+        )
+    }
+    if (confirmReset && u != null) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("${u.displayName} のパスワードをリセットしますか？") },
+            text = { Text("新しいパスワードをサーバーが作ります。今のパスワードは使えなくなります。新しいパスワードは本人に伝えてください (この画面を閉じると、もう表示できません)。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmReset = false
+                    scope.launch {
+                        runCatching { graph.api.resetPassword(userId) }
+                            .onSuccess { newPassword = it }
+                            .onFailure { ctx.toast(it.userMessage()) }
+                    }
+                }) { Text("リセット", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("キャンセル") } },
+        )
+    }
+    newPassword?.let { pw ->
+        val clipboard = androidx.compose.ui.platform.LocalClipboard.current
+        AlertDialog(
+            onDismissRequest = { newPassword = null },
+            title = { Text("新しいパスワード") },
+            text = {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(pw, style = MaterialTheme.typography.titleMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        clipboard.setClipEntry(androidx.compose.ui.platform.ClipEntry(android.content.ClipData.newPlainText("password", pw)))
+                    }
+                    ctx.toast("コピーしました")
+                }) { Text("コピー") }
+            },
+            dismissButton = { TextButton(onClick = { newPassword = null }) { Text("閉じる") } },
         )
     }
     if (confirmBan && u != null) {
