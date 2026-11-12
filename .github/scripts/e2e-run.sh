@@ -40,6 +40,16 @@ show_clues() {
   echo "::group::logcat (アプリ・起動・クラッシュに関係する行)"
   grep -E "GiracleE2E|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
   echo "::endgroup::"
+  # アプリのプロセス (途中で作り直されたものも含む) の記録をすべて出す。プッシュ受信など、裏で起きたことを追うため
+  pids=$(grep -oE "Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | grep -oE "[0-9]+" | tr '\n' '|' | sed 's/|$//')
+  if [ -n "$pids" ]; then
+    echo "::group::アプリのプロセスの記録 (pid: $pids)"
+    grep -E "^[0-9-]+ [0-9:.]+ +($pids) " "$OUT/logcat.txt" | grep -vE "ImeTracker|FrameTracker|InputMethod" | tail -n 200
+    echo "::endgroup::"
+  fi
+  echo "::group::プッシュ通知の受信 (UnifiedPush・Play 開発者サービス)"
+  grep -E "GiraclePush|UnifiedPush|UP-|FirebaseReceiver|GCM|FCM" "$OUT/logcat.txt" | tail -n 80
+  echo "::endgroup::"
   echo "::group::crash バッファ"; cat "$OUT/crash.txt"; echo "::endgroup::"
   # 終了時点の画面の要素 (resource-id・文字・クラス) の一覧
   echo "::group::画面の要素 (uiautomator dump)"

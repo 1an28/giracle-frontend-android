@@ -47,7 +47,22 @@ class AppGraph(context: Context) {
     val api = GiracleApi(http, endpoint)
     val ws = WsClient(http, scope) { endpoint }
 
-    private val _store = MutableStateFlow(ChatStore(api, ws, prefs, scope))
+    /**
+     * アプリの画面が前面にあるか (GiracleApp が切り替える)。プッシュで裏から起きたプロセスでは false のまま。
+     * 以前は ChatStore の既定値 (true) のままになり、プッシュ通知を「画面内で知らせる」扱いで捨てていた (D-019 の e2e で発見)。
+     */
+    @Volatile var inForeground = false
+        private set
+
+    fun setForeground(fg: Boolean) {
+        inForeground = fg
+        store.appInForeground = fg
+    }
+
+    private fun newStore() =
+        ChatStore(api, ws, prefs, scope) { inForeground || prefs.settings.value.keepConnection }.also { it.appInForeground = inForeground }
+
+    private val _store = MutableStateFlow(newStore())
     /** ログアウトのたびに作り直す。画面側はこれを購読する */
     val storeFlow: StateFlow<ChatStore> = _store
     val store: ChatStore get() = _store.value
@@ -55,17 +70,18 @@ class AppGraph(context: Context) {
     private val _phase = MutableStateFlow<AppPhase>(AppPhase.Starting)
     val phase: StateFlow<AppPhase> = _phase
 
+    private var snapshotJob: kotlinx.coroutines.Job? = null
+    @Volatile private var sessionLoadStarted = false
+
     init {
         val token = prefs.token
         val uid = prefs.userId
         if (token != null && uid != null && prefs.serverUrl != null) {
             // 保存済みセッションで即座にメイン画面へ (確認は裏で行う)
             _phase.value = AppPhase.SignedIn(uid, ready = false)
-            scope.launch {
-                // 前回の内容を先に出してから、サーバーの最新に置き換える
-                readSnapshot(uid)?.let { store.restore(it) }
-                loadSession(uid)
-            }
+            // 前回の内容を先に出す。サーバーの最新への置き換えは、画面を開いたときか常時接続のときに始める
+            // (プッシュで裏から起きたときに、通信と接続を始めないため。ensureSessionLoaded)
+            snapshotJob = scope.launch { readSnapshot(uid)?.let { store.restore(it) } }
         } else {
             _phase.value = AppPhase.SignedOut
         }
@@ -115,6 +131,7 @@ class AppGraph(context: Context) {
         // 読み込みはアプリの scope で行い、呼び出し元はその完了を待つだけにする。呼び出し元 (ログイン画面) は
         // 上の行で画面から外れて scope が取り消されるため、そこで読み込むと途中で止まり
         // 「サーバーから読み込めませんでした」になっていた (#12 で発見)。待つ側が取り消されても読み込みは続く。
+        sessionLoadStarted = true
         scope.launch { loadSession(r.userId) }.join()
     }
 
@@ -137,6 +154,22 @@ class AppGraph(context: Context) {
         }
     }
 
+    /**
+     * 保存済みのセッションで起動したときの、サーバーからの読み込みを始める (1 回だけ)。
+     * MainActivity の起動・前面への切り替え・常時接続のサービスから呼ぶ。プッシュの受信だけでは呼ばない。
+     */
+    fun ensureSessionLoaded() {
+        val p = _phase.value as? AppPhase.SignedIn ?: return
+        synchronized(this) {
+            if (sessionLoadStarted || p.ready) return
+            sessionLoadStarted = true
+        }
+        scope.launch {
+            snapshotJob?.join() // 前回の内容を出し終えてから最新に置き換える (逆になると古い内容で上書きされる)
+            loadSession(p.userId)
+        }
+    }
+
     fun retryLoad() {
         val p = _phase.value as? AppPhase.SignedIn ?: return
         _phase.value = p.copy(error = null)
@@ -144,16 +177,26 @@ class AppGraph(context: Context) {
     }
 
     suspend fun signOut() {
+        // サーバーから端末の登録を消すにはログイン中のトークンが要るので、ログアウトより先に解く
+        com.giracle.android.notify.PushRegistrar.onSignOut(appContext, this)
         runCatching { api.signOut() }
         signOutLocal()
     }
 
     private fun signOutLocal() {
+        // セッション切れでも、前のユーザー宛ての通知を受け続けないよう配信先の登録を解く
+        if (prefs.pushEndpoint != null) {
+            prefs.pushEndpoint = null
+            runCatching { org.unifiedpush.android.connector.UnifiedPush.unregister(appContext) }
+        }
         store.stop()
         prefs.clearSession()
+        com.giracle.android.ui.channel.Drafts.clear(appContext)
+        com.giracle.android.ui.ChannelShortcuts.clear(appContext)
         snapshotFile.delete()
         // 状態を捨てて作り直す
-        _store.value = ChatStore(api, ws, prefs, scope)
+        _store.value = newStore()
+        sessionLoadStarted = false
         _phase.value = AppPhase.SignedOut
     }
 

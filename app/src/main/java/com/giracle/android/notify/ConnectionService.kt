@@ -33,7 +33,7 @@ class ConnectionService : Service() {
             .build()
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, 1, n, type)
-        (application as GiracleApp).graph.ws.start()
+        (application as GiracleApp).graph.let { it.ensureSessionLoaded(); it.ws.start() }
         return START_STICKY
     }
 

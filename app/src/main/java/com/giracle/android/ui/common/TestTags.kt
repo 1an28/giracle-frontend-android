@@ -36,12 +36,15 @@ object TestTags {
     const val HOME_CHANNEL_BROWSER = "home.channel_browser"
     const val HOME_MEMBERS = "home.members"
     const val HOME_MANAGE_SERVER = "home.manage_server"
+    const val HOME_SHARE_BANNER = "home.share_banner"
     fun homeChannel(channelId: String) = "home.channel:$channelId"
 
     // チャンネル
     const val CHANNEL_MESSAGES = "channel.messages"
     fun message(messageId: String) = "channel.message:$messageId"
     fun reaction(messageId: String, emojiCode: String) = "channel.reaction:$messageId:$emojiCode"
+    /** 添付画像。読み込みが済むと「channel.image_loaded:」に変わる */
+    fun image(fileId: String, loaded: Boolean) = (if (loaded) "channel.image_loaded:" else "channel.image:") + fileId
     fun expandLongText(messageId: String) = "channel.expand:$messageId"
     const val LONG_TEXT_DIALOG = "channel.long_text"
     const val COMPOSER_INPUT = "composer.input"
@@ -49,6 +52,8 @@ object TestTags {
 
     // 設定
     const val SETTINGS_KEEP_CONNECTION = "settings.keep_connection"
+    const val SETTINGS_PUSH_STATUS = "settings.push_status"
+    const val SETTINGS_PUSH_ENABLE = "settings.push_enable"
 
     // メッセージの操作 (長押しで出るシート) と絵文字ピッカー
     const val MESSAGE_ACTIONS = "message_actions"

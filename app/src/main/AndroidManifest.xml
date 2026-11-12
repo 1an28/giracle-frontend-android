@@ -15,6 +15,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Giracle"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- 起動時間の計測 (Macrobenchmark、#8) で、配布版のままトレースを取れるようにする。動作には影響しない -->
+        <profileable android:shell="true" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,6 +26,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 最近送ったチャンネルを、共有シートの直接の送り先・ランチャーのショートカットにする (#25) -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+            <!-- 他のアプリの「共有」から、画像・ファイル・文章を受け取る (D-020) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 
@@ -35,6 +52,11 @@
                 <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- 通知の「返信」「既読にする」ボタン (D-022) -->
+        <receiver
+            android:name=".notify.NotificationActionReceiver"
+            android:exported="false" />
 
         <!-- 設定で「バックグラウンドでも接続を保つ」を ON にしたときだけ動く -->
         <service

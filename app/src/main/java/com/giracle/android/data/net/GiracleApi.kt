@@ -155,6 +155,10 @@ class GiracleApi(private val client: OkHttpClient, @Volatile var endpoint: Endpo
     suspend fun ban(userId: String) = callUnit("POST", "user/ban", obj("userId" to userId))
     suspend fun unban(userId: String) = callUnit("POST", "user/unban", obj("userId" to userId))
 
+    /** 管理者 (manageServer) が、自分より下のロールのユーザーのパスワードを作り直す。新しいパスワードを返す */
+    suspend fun resetPassword(userId: String): String =
+        call<com.giracle.android.data.model.NewPassword>("POST", "user/reset-password", obj("targetUserId" to userId)).newPassword
+
     fun iconUrl(userId: String) = endpoint.apiUrl("user/icon/$userId")
     fun bannerUrl(userId: String) = endpoint.apiUrl("user/banner/$userId")
     fun fileUrl(fileId: String) = endpoint.apiUrl("message/file/$fileId")

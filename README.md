@@ -6,8 +6,8 @@
 - Web 版 ([giracle-frontend-solid](https://github.com/NfoAlex/giracle-frontend-solid)) の主な機能に対応している。
   一部まだ対応していない機能があり、対応状況は [機能一覧](docs/FEATURES.md)、検討中のものは [Issues](https://github.com/1an28/giracle-frontend-kotlin/issues) にある
 - 配布版 APK は約 2MB。起動時は前回の内容を即座に表示し、裏で最新に置き換える
-- アプリを閉じていても通知を受け取れる。ただし、端末に UnifiedPush の配信アプリ (ntfy など) を入れ、
-  サーバーに VAPID 鍵が設定されている必要がある。配信アプリを使わない場合は、常時接続の設定で受け取れる (電池を多めに使う)
+- アプリを閉じていても通知を受け取れる (Google Play 開発者サービスのある端末なら、ほかのアプリを入れずに使える。
+  サーバーに VAPID 鍵が設定されている必要がある)
 - Flutter 版 ([giracle-frontend-flutter](https://github.com/ayok01/giracle-frontend-flutter)、`com.giracle.giracle`) とは
   別アプリ (`io.github.u1an28.giracle.kotlin`、表示名「Giracle Native」) なので、同じ端末に並べて入れられる
 
@@ -23,12 +23,12 @@
 ## 通知
 
 - アプリを開いているとき: 画面上部に表示
-- アプリを閉じているとき: 次のどちらかで受け取れる。
-  - UnifiedPush: 端末に [ntfy](https://ntfy.sh) などの UnifiedPush 配信アプリを入れ、「設定 > 通知 > プッシュ通知 > 有効にする」。
-    サーバーに VAPID 鍵が設定されている必要がある ([詳細](docs/SERVER_CHANGES.md))
-  - 常時接続: 「設定 > 通知 > バックグラウンドでも接続を保つ」を ON。配信アプリは不要だが、電池を多めに使う
-
-どの方法を標準にするかは未定 ([Issues](https://github.com/1an28/giracle-frontend-kotlin/issues) で検討中)。
+- アプリを閉じているとき: プッシュ通知で受け取る。ログインすると自動で有効になる (「設定 > 通知 > プッシュ通知」で確認・無効化できる)
+  - Google Play 開発者サービスのある端末: そのまま使える (Google の配信網を通る。中身は暗号化されている)
+  - UnifiedPush の配信アプリ ([ntfy](https://ntfy.sh) など) を入れている端末: そちらを使う
+  - サーバーに VAPID 鍵が設定されている必要がある。サーバー側のコード変更は要らない ([詳細](docs/SERVER_CHANGES.md))
+- どちらも無い端末: 「設定 > 通知 > バックグラウンドでも接続を保つ」を ON にする (常駐して接続を保つ。電池を多めに使う)
+- 通知はチャンネルごとにまとまる。通知の「返信」「既読にする」で、アプリを開かずに操作できる
 
 ## 開発
 

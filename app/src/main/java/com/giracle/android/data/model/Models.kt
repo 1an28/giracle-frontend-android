@@ -256,6 +256,10 @@ data class WsFrame(val signal: String, val data: kotlinx.serialization.json.Json
 @Serializable
 data class VapidKey(val publicKey: String)
 
+/** 管理者がパスワードをリセットしたときの、新しいパスワード (`POST /user/reset-password`) */
+@Serializable
+data class NewPassword(val newPassword: String)
+
 /** サーバーが Web Push で送る通知の中身 (giracle-backend の PushPayload) */
 @Serializable
 data class PushPayload(

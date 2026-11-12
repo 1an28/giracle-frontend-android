@@ -30,7 +30,7 @@ keyPassword=...
 ## ローカルでの動作確認
 
 ```bash
-devtools/start-local-stack.sh   # バックエンド :3000 と Web 版 :3333 (/api と /ws を転送) を起動
+devtools/start-local-stack.sh   # バックエンド :3000 と Web 版 :3333 (/api と /ws を転送) を起動。VAPID 鍵も作って入れる
 devtools/seed-demo.sh           # デモデータ (admin / password123 を先に Web 版かアプリで作る)
 ```
 
@@ -69,6 +69,23 @@ devtools/start-local-stack.sh   # 管理者 admin / password123 も作ってお�
 - 手順は `e2e/src/main/java/com/giracle/e2e/ReleaseAppTest.kt`。要素は testTag (resource-id) で探すので、
   `TestTags` の名前を変えるとここも直す必要がある。
 - 失敗したときは、CI のログに logcat の要点・crash バッファ・終了時点の画面の要素一覧が出る。
+
+## Baseline Profile の記録と起動時間の計測 (#8、D-021)
+
+CI (`baseline-profile.yml`、`baselineprofile/` を変えた PR と手動実行) が、エミュレータで次を行う。
+配布版のリリース (`release.yml`) も、ビルドの前に同じスクリプトで記録し直す (失敗したらリポジトリの内容のまま出す)。
+
+1. 難読化しない配布版 (`assembleNonMinifiedRelease`) を入れ、`BaselineProfileGenerator` で
+   ログイン → ホーム → チャンネルを開いてスクロール → 設定、を繰り返して使われたコードを記録する
+2. 記録を `app/src/main/baseline-prof.txt` に置き、配布版を作り直す (R8 がクラス名を合わせて取り込む)
+3. `StartupBenchmark` で、記録前・記録後の配布版の起動時間 (コールドスタート) を測り、ログに出す
+
+```bash
+./gradlew :app:assembleNonMinifiedRelease :baselineprofile:assembleDebug
+.github/scripts/baseline-profile.sh generate app/build/outputs/apk/nonMinifiedRelease/app-nonMinifiedRelease.apk
+./gradlew :app:assembleRelease
+.github/scripts/baseline-profile.sh measure app/build/outputs/apk/release/app-release.apk after
+```
 
 ## プッシュ通知の確認 (サーバー側)
 

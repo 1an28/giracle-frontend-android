@@ -61,9 +61,24 @@ class ServerApi(private val server: String) {
     }
 
     /** 新しい順の本文 */
-    fun recentTexts(channelId: String): List<String> {
+    fun recentTexts(channelId: String): List<String> = recent(channelId).map { it.content }
+
+    data class Msg(val id: String, val content: String, val files: List<Pair<String, String>>, val reactions: Map<String, Int>)
+
+    /** 新しい順のメッセージ (添付は (ファイル ID, 種類)、リアクションは 絵文字コード → 数) */
+    fun recent(channelId: String): List<Msg> {
         val r = call("POST", "channel/get-history/$channelId", JSONObject().put("fetchLength", 30).put("fetchDirection", "older"))
         val msgs = r.getJSONObject("data").getJSONArray("history")
-        return (0 until msgs.length()).map { msgs.getJSONObject(it).optString("content") }
+        return (0 until msgs.length()).map { i ->
+            val m = msgs.getJSONObject(i)
+            val files = m.optJSONArray("MessageFileAttached") ?: JSONArray()
+            val reactions = m.optJSONArray("reactionSummary") ?: JSONArray()
+            Msg(
+                id = m.getString("id"),
+                content = m.optString("content"),
+                files = (0 until files.length()).map { files.getJSONObject(it).let { f -> f.getString("id") to f.optString("type") } },
+                reactions = (0 until reactions.length()).associate { reactions.getJSONObject(it).let { x -> x.getString("emojiCode") to x.optInt("count") } },
+            )
+        }
     }
 }

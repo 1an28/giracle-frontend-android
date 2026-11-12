@@ -2,5 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- テストの準備 (ユーザー・チャンネルの作成、相手側の送信) をサーバーの API で直接行う -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:usesCleartextTraffic="true" />
+    <application android:usesCleartextTraffic="true">
+        <!-- 「他のアプリからの共有」を真似て、テストが作ったファイルを渡す (#4) -->
+        <provider
+            android:name="com.giracle.e2e.ShareProvider"
+            android:authorities="com.giracle.e2e.share"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
 </manifest>

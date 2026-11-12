@@ -11,18 +11,19 @@ Android ネイティブアプリ (Giracle Native) を作るなかで分かった
 
 | ID | 種類 | 内容 | 急ぎ度 | 関連 Issue |
 | --- | --- | --- | --- | --- |
-| S-1 | 不具合 | 通知が残っているチャンネルを削除すると 500 になる | 直してほしい | - |
+| S-1 | 不具合 | 通知が残っているチャンネルを削除すると 500 になる | 作者が直すと返事 (2026-11-12)。未修正 (`87be860` 時点) | - |
 | S-3 | 相談 | アプリからの WebSocket 接続の正式な入口 | 急がない (今は暫定の方法で動いている) | [#7](https://github.com/1an28/giracle-frontend-kotlin/issues/7) |
 | S-5 | 要望 | ログインのトークンを Cookie 以外でも受け渡せるようにする | 急がない | [#7](https://github.com/1an28/giracle-frontend-kotlin/issues/7) |
-| S-2 | 確認 | プッシュ通知: 本番から配信サーバーへ出られるか / FCM に対応するか | 確認だけ先にほしい | [#6](https://github.com/1an28/giracle-frontend-kotlin/issues/6) |
+| S-2 | 情報 | プッシュ通知: **サーバーの変更は不要になった** (アプリが FCM 経由の Web Push を受ける) | 本番から FCM へ送れるかだけ確認したい | [#6](https://github.com/1an28/giracle-frontend-kotlin/issues/6) |
 | S-6 | 要望 | サーバーのバージョンを返す窓口 | あると助かる | - |
+| S-7 | 相談 | プッシュの中身に送信者の userId とチャンネル名を入れる | あると助かる (無くてもアプリで作れる) | [#26](https://github.com/1an28/giracle-frontend-kotlin/issues/26) |
+| S-8 | 相談 | 送信の重複を防ぐため、送信にクライアントが付ける ID を受け付ける | 急がない | [#30](https://github.com/1an28/giracle-frontend-kotlin/issues/30) |
 | S-4 | 情報 | そのほか気づいたこと | 対応不要 | - |
 
 ### 話すときのチェックリスト
 
-- [ ] S-1 を直してもらえるか
-- [ ] S-2: 本番サーバーから `https://ntfy.sh` へ HTTPS で出られるか
-- [ ] S-2: FCM に対応する気があるか (無ければ UnifiedPush と常時接続だけで続ける)
+- [x] S-1 を直してもらえるか → 直すと返事をもらった (2026-11-12)
+- [ ] S-2: Web 版のプッシュ通知が Chrome で届いているか (届いていれば、本番から `fcm.googleapis.com` へ送れている)
 - [ ] S-3 / S-5: アプリ向けの認証・接続方法をどうするか (案は下に)
 
 ---
@@ -105,40 +106,41 @@ Cookie での認証はそのまま残せば、Web 版には影響しない。
 
 ---
 
-## S-2 プッシュ通知 (確認と相談)
+## S-2 プッシュ通知 (情報: サーバーの変更は不要)
 
-### 結論: UnifiedPush 方式ならサーバーのコード変更は不要
+### 結論 (2026-11-12 更新)
 
-アプリは **UnifiedPush** に対応している。UnifiedPush の宛先は Web Push と同じ形式なので、
-サーバーの既存の Web Push 送信 (`Utils/SendPushNotification.ts`) がそのまま Android に届く。
+**サーバーのコード変更も Firebase プロジェクトも要らない。** 今の VAPID 付き Web Push のまま、アプリに届く。
+配信アプリ (ntfy など) を入れなくてもよい。
 
-**仕組み**: アプリは UnifiedPush から受け取った宛先 URL と鍵 (P-256 公開鍵・auth) を
-`POST /notification/device/register` に `platform: "web"` で登録する。サーバーは Web ブラウザと同じ方法
-(RFC 8030 + RFC 8291 aes128gcm + VAPID) で送り、配信アプリ (ntfy など) 経由で届いた暗号文をアプリが復号して通知を出す。
-ローカル環境で「登録 → メンション → 暗号化された通知の受信 → 復号」まで確認した (`devtools/push-e2e.py`)。実機では未確認。
+### 仕組み
+
+アプリは UnifiedPush の「組み込み FCM 配信」を使う (アプリの判断記録 D-019)。
+
+1. アプリが端末の Google Play 開発者サービスに、**サーバーの VAPID 公開鍵** (`GET /notification/vapid-public-key`) を送信者として登録する。
+   宛先 `https://fcm.googleapis.com/fcm/send/<トークン>` が返ってくる。Chrome で Web Push を購読したときと同じ種類の宛先。
+2. アプリはその宛先と鍵 (P-256 公開鍵・auth) を、`POST /notification/device/register` に `platform: "web"` で登録する。
+3. サーバーは今の `Utils/SendPushNotification.ts` のまま、Web Push (RFC 8030 + RFC 8291 aes128gcm + VAPID) で送る。
+   FCM が端末に届け、アプリが復号して通知を出す。Google には暗号文しか見えない。
+
+配信アプリ (ntfy など) を入れている端末では、そちらが使われる (宛先が ntfy のサーバーになるだけで、サーバー側の扱いは同じ)。
 
 サーバー側に要るもの:
 
-1. VAPID 鍵の設定 (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`)。
-   **本番 (chat.girak.moe) は設定済み**。`GET /api/notification/vapid-public-key` が鍵を返すことを確認した (2026-11-12)。
-2. サーバーから配信サーバー (ntfy を使うなら `https://ntfy.sh` など) へ HTTPS で出られること。**本番では未確認**。
+1. VAPID 鍵の設定。**本番 (chat.girak.moe) は設定済み** (2026-11-12 に `GET /api/notification/vapid-public-key` で確認)。
+2. サーバーから `https://fcm.googleapis.com` へ HTTPS で出られること。**本番では未確認**。
+   Web 版の利用者が Chrome でプッシュ通知を受け取れていれば、同じ宛先なので出られている。
 
-### 相談: FCM (Google のプッシュ) に対応するか
+### 注意
 
-UnifiedPush は利用者が配信アプリ (ntfy など) を入れる必要がある。配信アプリ無しで受けたい場合は FCM が要る。
-対応しない場合、アプリは UnifiedPush と常時接続 (アプリが WebSocket を保ち続ける) の 2 つで続ける。
+- VAPID 鍵を作り直すと、登録済みの端末 (Web 版・アプリとも) は登録し直しが必要になる。
+- 送信に失敗した宛先 (404 / 410) を消す今の処理は、そのまま役に立つ (アプリを消した端末の宛先が消える)。
 
-対応する場合のサーバー側の変更:
+### 以前の案 (参考: 今は不要)
 
-1. Firebase プロジェクトを作り、サービスアカウントの鍵をサーバーに置く (環境変数でパスを渡す)
-2. `SendPushNotification.ts` の「未対応プラットフォーム (android/ios) は将来対応」の箇所に、
-   `platform === "android"` の端末へ FCM HTTP v1 API (`https://fcm.googleapis.com/v1/projects/<id>/messages:send`)
-   で送る処理を足す
-   - `device.token` に FCM の登録トークンが入る
-   - `payload` の `title`/`body` を notification に、`data` (channelId, messageId) を data に入れる
-   - 無効なトークン (`UNREGISTERED`) は削除する
-3. アプリ側は Firebase Messaging SDK と `google-services.json` を入れ、`platform: "android"` で登録する
-   (アプリ側は未実装)
+アプリに Firebase Messaging SDK を入れ、サーバーに FCM HTTP v1 API での送信 (`platform === "android"`) を足す案だった。
+Firebase プロジェクトを誰が持つか、サービスアカウントの鍵をサーバーに置くか、実装を誰がするか、を決める必要があった。
+上の方法で要らなくなった。将来、上の方法が Google 側の変更で使えなくなったときの代わりとして残しておく。
 
 ---
 
@@ -149,6 +151,29 @@ S-3 や S-5 のように入口が増えたとき、アプリは「このサー�
 
 - 例: `GET /server/config` の応答に `version` (や対応している機能の一覧) を足す
 - 無い場合、アプリは新しい方法を試して、失敗したら古い方法に戻る形で対応する (できるが、少し手間がかかる)
+
+---
+
+## S-7 プッシュの中身に送信者とチャンネル名を入れる (相談・あると助かる)
+
+アプリの通知を、送信者のアイコン付きの会話の形 (Android の MessagingStyle) にしたい (#26)。
+今のプッシュの中身 (`PushPayload`) は title / body と `data` (type, messageId, channelId) だけなので、
+アプリは通知を受けるたびに `GET /message/:messageId` などで送信者を取りに行くことになる。
+
+- A. `data` に `userId` (送信者) と `channelName` を足す。Web 版にも影響しない (使わないだけ)
+- B. 今のまま。アプリが取りに行く (通知が出るまで少し遅れる。通信が 1〜2 回増える)
+
+どちらでもアプリは作れる。
+
+---
+
+## S-8 送信の重複を防ぐ ID (相談・急がない)
+
+電波が不安定なときに送ったメッセージを、つながってから送り直す仕組みを考えている (#30)。
+「送ったが応答が返らなかった」場合に送り直すと、二重に投稿される。
+
+- A. `POST /message/send` に任意の `clientMessageId` を受け付け、同じユーザーの同じ ID は 1 回だけ保存する
+- B. 今のまま。アプリは送り直す前に履歴を取り直し、同じ本文が無いか確かめる (完全には防げない)
 
 ---
 

@@ -46,6 +46,7 @@ import com.giracle.android.AppGraph
 import com.giracle.android.AppPhase
 import com.giracle.android.data.InAppNotice
 import com.giracle.android.notify.ConnectionService
+import com.giracle.android.notify.PushRegistrar
 import com.giracle.android.ui.browser.ChannelBrowserScreen
 import com.giracle.android.ui.channel.ChannelScreen
 import com.giracle.android.ui.channel.ChannelSettingsScreen
@@ -92,7 +93,9 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
 
     // 通知の許可 (Android 13+)。初回ログイン時に 1 度だけ尋ねる
     var asked by rememberSaveable { mutableStateOf(false) }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    // 権限の答えが出たら、プッシュ通知の自動登録を試し直す (D-019)
+    var permAnswered by remember { mutableStateOf(0) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permAnswered++ }
     LaunchedEffect(Unit) {
         if (!asked && Build.VERSION.SDK_INT >= 33) {
             asked = true
@@ -102,10 +105,22 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     LaunchedEffect(settings.keepConnection, p.ready) {
         if (p.ready) ConnectionService.sync(ctx, settings.keepConnection)
     }
+    // プッシュ通知を自動で有効にする (配信先が 1 つに決まり、利用者が無効にしていなければ)。D-019
+    LaunchedEffect(p.ready, permAnswered) {
+        if (p.ready) runCatching { PushRegistrar.autoEnable(ctx.applicationContext, graph, p.userId) }
+    }
 
     // 前回開いていたチャンネルを復元 (起動直後に即座に表示する)
     LaunchedEffect(Unit) {
+        // 共有から開かれたときは、送り先を選んでもらうためホームのままにする
+        if (PendingShare.content != null) return@LaunchedEffect
         graph.prefs.lastChannelId?.let { if (pendingOpen.value == null) nav.openChannel(it) }
+    }
+    // 共有を受け取ったら、送り先のチャンネルを選べるようホームに戻る (D-020)
+    val share = PendingShare.content
+    LaunchedEffect(share) {
+        // 共有シートで直接チャンネルが選ばれた (#25) ときは、そのチャンネルを開くのでホームに戻らない
+        if (share != null && PendingShare.target == null) nav.reset()
     }
     // 通知から開かれたとき
     val pending = pendingOpen.value

@@ -22,8 +22,8 @@ android {
         applicationId = "io.github.u1an28.giracle.kotlin"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -45,6 +45,14 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystoreProps.isNotEmpty()) signingConfigs.getByName("release")
             else signingConfigs.getByName("debug")
+        }
+        // Baseline Profile の記録用 (#8、D-021)。配布版と同じだが難読化しない (記録したクラス名がソースと同じになる)
+        create("nonMinifiedRelease") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -104,6 +112,8 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.coil.gif)
     implementation(libs.unifiedpush.connector)
+    // 配信アプリが無い端末でも、Google Play 開発者サービス経由でサーバーの Web Push を受け取る (D-019)
+    implementation(libs.unifiedpush.embedded.fcm)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
