@@ -104,6 +104,7 @@ class UiScreenshotTest {
         val graph = ApplicationProvider.getApplicationContext<GiracleApp>().graph
         graph.setServer(server!!, false)
         graph.prefs.lastChannelId = null // 前回のチャンネルを自動で開かないようにする
+        graph.setForeground(true) // Robolectric では前面への切り替えが届かないことがあるので、明示する
         runBlocking { graph.signIn(adminUser, adminPass) }
         rule.setContent { Root(graph, mutableStateOf(null)) }
     }

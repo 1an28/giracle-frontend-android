@@ -19,6 +19,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleIntent(intent)
         val graph = (application as GiracleApp).graph
+        // サーバーからの読み込みをすぐ始める (前面への切り替えの通知を待たない。起動を速くするため)
+        graph.ensureSessionLoaded()
         setContent { Root(graph, pendingOpen) }
     }
 

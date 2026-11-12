@@ -29,13 +29,14 @@ class GiracleApp : Application(), SingletonImageLoader.Factory {
         // 前面・背面の切り替えで WebSocket を管理する
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
-                graph.store.appInForeground = true
+                graph.setForeground(true)
+                graph.ensureSessionLoaded()
                 // 背面で切断していた場合はつなぎ直す (再接続後に取りこぼしを取り直す)
                 if (graph.phase.value is AppPhase.SignedIn) graph.ws.start()
             }
 
             override fun onStop(owner: LifecycleOwner) {
-                graph.store.appInForeground = false
+                graph.setForeground(false)
                 graph.saveSnapshot()
                 // 常時接続が OFF なら、背面に回ったら切断して電池を節約する
                 if (!graph.prefs.settings.value.keepConnection) graph.ws.stop()

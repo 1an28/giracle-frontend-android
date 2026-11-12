@@ -88,6 +88,8 @@ class ChatStore(
     private val ws: WsClient,
     private val prefs: Prefs,
     private val scope: CoroutineScope,
+    /** 読み込みの後に WebSocket をつなぐか。プッシュで裏から起きたプロセスではつながない (AppGraph が決める) */
+    private val shouldConnect: () -> Boolean = { true },
 ) {
     val me = MutableStateFlow<User?>(null)
     val serverConfig = MutableStateFlow(ServerConfig())
@@ -167,7 +169,7 @@ class ChatStore(
                 }
             }
         }
-        ws.start()
+        if (shouldConnect()) ws.start()
     }
 
     /** WS エラー時、トークンが本当に無効か確かめる */

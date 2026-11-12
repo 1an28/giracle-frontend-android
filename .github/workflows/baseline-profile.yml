@@ -12,7 +12,8 @@ on:
 
 concurrency:
   group: baseline-profile-${{ github.ref }}
-  cancel-in-progress: true
+  # 記録には 20 分ほどかかるので、続けて push しても途中の実行を取り消さない (結果を見るため)
+  cancel-in-progress: false
 
 jobs:
   baseline-profile:
