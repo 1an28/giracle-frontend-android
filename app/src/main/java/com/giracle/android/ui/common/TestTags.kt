@@ -24,6 +24,8 @@ object TestTags {
     const val SCREEN_MANAGE_SERVER = "screen.manage_server"
 
     // ログイン
+    const val LOGIN_SERVER_URL = "login.server_url"
+    const val LOGIN_CONNECT = "login.connect"
     const val LOGIN_USERNAME = "login.username"
     const val LOGIN_PASSWORD = "login.password"
     const val LOGIN_SUBMIT = "login.submit"
@@ -44,6 +46,9 @@ object TestTags {
     const val LONG_TEXT_DIALOG = "channel.long_text"
     const val COMPOSER_INPUT = "composer.input"
     const val COMPOSER_SEND = "composer.send"
+
+    // 設定
+    const val SETTINGS_KEEP_CONNECTION = "settings.keep_connection"
 
     // メッセージの操作 (長押しで出るシート) と絵文字ピッカー
     const val MESSAGE_ACTIONS = "message_actions"

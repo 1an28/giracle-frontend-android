@@ -1,0 +1,18 @@
+name: local-server
+description: >
+  ランナー上に Giracle のサーバー (バックエンド + Web 版の転送) を立て、管理者 admin / password123 を作る。
+  参照先 (giracle-backend / giracle-frontend-solid) の最新版を使う (D-016)。http://localhost:3333 で待ち受ける。
+  live-test・e2e (#12) で共通。Baseline Profile の記録 (#8) でも使える。
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+    - name: Start local server
+      shell: bash
+      run: devtools/start-local-stack.sh
+    - name: Create admin user
+      shell: bash
+      # 最初に登録したユーザーが管理者になる
+      run: |
+        curl -sf -X PUT http://localhost:3333/api/user/sign-up -H 'content-type: application/json' \
+          -d '{"username":"admin","password":"password123"}'

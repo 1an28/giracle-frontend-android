@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# CI 用: 起動済みのエミュレータに配布版 APK と確認用 APK (:e2e) を入れ、通しの確認 (#12) を動かす。
+# 前提: emulator-start.sh で起動済み、localhost:3333 にサーバー (local-server)、APK はビルド済み。
+#   APP_APK : 確かめる APK (既定: assembleRelease の出力)
+# 結果は e2e-out/ (画面・logcat・crash バッファ) に置く。
+set -uo pipefail
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+ADB="$SDK/platform-tools/adb"
+AAPT2=$(ls -d "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
+APP_APK=${APP_APK:-app/build/outputs/apk/release/app-release.apk}
+TEST_APK=$(ls e2e/build/outputs/apk/debug/*.apk | head -1)
+APP_PKG=$("$AAPT2" dump packagename "$APP_APK")
+TEST_PKG=$("$AAPT2" dump packagename "$TEST_APK")
+OUT=e2e-out
+mkdir -p "$OUT"
+echo "app: $APP_PKG ($APP_APK)  test: $TEST_PKG ($TEST_APK)"
+
+set -e
+# 端末の localhost:3333 をランナーのサーバーにつなぐ (アプリが送る Origin が CORS_ORIGIN と一致する)
+"$ADB" reverse tcp:3333 tcp:3333
+# 権限は付けずに入れる (通知の権限の確認画面が出ることも確かめるため)
+"$ADB" install -r "$APP_APK"
+"$ADB" install -r -t "$TEST_APK"
+"$ADB" shell pm list instrumentation
+"$ADB" logcat -c || true
+set +e
+
+t0=$(date +%s)
+"$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 \
+  "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
+echo "e2e: $(( $(date +%s) - t0 ))s"
+
+"$ADB" logcat -d > "$OUT/logcat.txt" 2>&1
+"$ADB" logcat -b crash -d > "$OUT/crash.txt" 2>&1
+"$ADB" pull "/sdcard/Android/data/$TEST_PKG/files/screenshots" "$OUT/" > /dev/null 2>&1 || true
+
+status=0
+# am instrument は失敗しても終了コードが 0 なので、出力で判断する
+grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
+if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
+  echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"
+  cat "$OUT/crash.txt"
+  status=1
+fi
+exit $status

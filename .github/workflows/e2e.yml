@@ -1,0 +1,44 @@
+name: e2e
+
+# 配布版 (R8 適用後) の APK をエミュレータに入れ、ランナー上のサーバーにつないで外から操作して確かめる (#12)。
+# 実行するタイミングは D-017 を参照。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install SDK packages
+        run: .github/scripts/sdk-install.sh
+      # 配布版は debug 鍵で署名する (R8 の処理は本物の配布版と同じ。鍵は Secrets を使わない)
+      - name: Build release APK and e2e APK
+        run: ./gradlew :app:assembleRelease :e2e:assembleDebug
+      - uses: ./.github/actions/local-server
+      - name: Start emulator
+        run: .github/scripts/emulator-start.sh
+      - name: Run e2e
+        run: .github/scripts/e2e-run.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e
+          path: |
+            e2e-out/
+            app/build/outputs/mapping/release/mapping.txt
+      - name: Logs
+        if: failure()
+        run: tail -n 60 ~/backend.log ~/web.log ~/emulator.log || true

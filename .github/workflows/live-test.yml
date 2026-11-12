@@ -18,16 +18,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: oven-sh/setup-bun@v2
       - name: Install SDK packages
         run: .github/scripts/sdk-install.sh
-      - name: Start local server
-        run: devtools/start-local-stack.sh
-      - name: Create admin user
-        # 最初に登録したユーザーが管理者になる
-        run: |
-          curl -sf -X PUT http://localhost:3333/api/user/sign-up -H 'content-type: application/json' \
-            -d '{"username":"admin","password":"password123"}'
+      - uses: ./.github/actions/local-server
       - name: Tests against local server
         env:
           GIRACLE_TEST_SERVER: http://localhost:3333

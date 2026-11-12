@@ -85,7 +85,7 @@ fun LoginScreen() {
             OutlinedTextField(
                 value = url, onValueChange = { url = it; server = null },
                 label = { Text("サーバーの URL") }, placeholder = { Text("https://chat.example.com") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                singleLine = true, modifier = Modifier.fillMaxWidth().testTag(TestTags.LOGIN_SERVER_URL),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = { probe() }),
             )
@@ -94,7 +94,7 @@ fun LoginScreen() {
                 Text("バックエンドに直接接続する (/api を付けない・開発用)", style = MaterialTheme.typography.bodySmall)
             }
             if (server == null) {
-                Button(onClick = ::probe, enabled = !busy && url.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("接続") }
+                Button(onClick = ::probe, enabled = !busy && url.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag(TestTags.LOGIN_CONNECT)) { Text("接続") }
             }
             if (busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
