@@ -220,7 +220,7 @@ class ReleaseAppTest {
         if (shell("pidof $pkg").isBlank()) fail("$whenDoing にアプリのプロセスが無い (落ちた可能性。logcat の crash バッファを見る)")
     }
 
-    private fun shell(cmd: String): String = device.executeShellCommand(cmd).also { Log.d(TAG, "$ $cmd\n$it") }
+    private fun shell(cmd: String): String = device.executeShellCommand(cmd).also { Log.d(TAG, "$ $cmd\n" + it.take(300)) }
 
     private fun shot(name: String) {
         runCatching { device.takeScreenshot(File(shots, "%02d-%s.png".format(step++, name))) }
