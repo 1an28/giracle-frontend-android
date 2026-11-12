@@ -72,6 +72,10 @@ data class InAppNotice(
     val messageId: String?,
     /** 送信者の表示名 (通知を会話の形にするのに使う。分からなければ null) */
     val sender: String? = null,
+    /** 送信者の ID (通知に送信者のアイコンを出すのに使う。#26) */
+    val senderId: String? = null,
+    /** チャンネル名 (分かっていれば。無ければ通知を出すときにストアから探す) */
+    val channelName: String? = null,
 )
 
 /**
@@ -560,7 +564,7 @@ class ChatStore(
                 if (prefs.settings.value.notifyInbox && msg.channelId !in mutedChannels.value && notificationConfig.value.let { it.enabled && it.mode != "off" }) {
                     val name = users.value[msg.userId]?.displayName ?: "誰か"
                     val title = if (type == "reply") "$name さんからの返信" else "$name さんからのメンション"
-                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id, sender = name))
+                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id, sender = name, senderId = msg.userId))
                 }
             }
             "inbox::Deleted" -> {
@@ -642,7 +646,7 @@ class ChatStore(
                 val known = users.value[m.userId]?.displayName
                 val name = known ?: "新着メッセージ"
                 val ch = channels.value.firstOrNull { it.id == m.channelId }?.name
-                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id, sender = known))
+                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id, sender = known, senderId = m.userId, channelName = ch))
             }
         }
     }

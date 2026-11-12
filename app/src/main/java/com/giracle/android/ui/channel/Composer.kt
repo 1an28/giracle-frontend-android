@@ -83,6 +83,11 @@ import com.giracle.android.ui.common.humanSize
 import com.giracle.android.ui.common.rememberUser
 import com.giracle.android.ui.common.toast
 import com.giracle.android.ui.common.uploadFileFrom
+import com.giracle.android.data.ImageShrinker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import com.giracle.android.ui.common.userMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -192,7 +197,16 @@ fun Composer(
     fun upload(a: Attachment) {
         a.job = scope.launch {
             try {
-                val base = ctx.uploadFileFrom(a.uri)
+                var base = ctx.uploadFileFrom(a.uri)
+                // 写真は送る前に縮める (#28、D-025)。縮めた方が小さいときだけ差し替える
+                if (graph.prefs.settings.value.shrinkImages && ImageShrinker.isTarget(base.mime)) {
+                    val shrunk = withContext(Dispatchers.Default) { ImageShrinker.shrink(ctx.contentResolver, a.uri, base.mime, a.size) }
+                    if (shrunk != null) base = UploadFile(ImageShrinker.jpegName(base.name), "image/jpeg", shrunk.bytes.toRequestBody("image/jpeg".toMediaType()))
+                }
+                if (base.body.contentLength() >= server.messageMaxFileSize) {
+                    a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
+                    return@launch
+                }
                 val counting = UploadFile(base.name, base.mime, ProgressBody(base.body) { a.progress = it })
                 a.fileId = graph.api.uploadFile(channelId, counting)
                 a.progress = 1f
@@ -207,7 +221,9 @@ fun Composer(
             val size = ctx.fileSizeOf(u)
             val f = ctx.uploadFileFrom(u)
             val a = Attachment(u, f.name, size)
-            if (size >= 0 && size >= server.messageMaxFileSize) a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
+            // 縮める写真は、縮めた後の大きさで上限を確かめる (upload の中)
+            val willShrink = settings.shrinkImages && ImageShrinker.isTarget(f.mime)
+            if (!willShrink && size >= 0 && size >= server.messageMaxFileSize) a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
             else if (!com.giracle.android.ui.common.isUploadable(f.mime)) a.error = "この形式 (${f.mime}) はサーバーが受け付けません"
             attachments += a
             if (a.error == null) upload(a)

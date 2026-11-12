@@ -188,6 +188,7 @@ private fun ColumnScope.DisplayTab() {
 private fun ColumnScope.ChatTab() {
     val graph = LocalGraph.current
     val s by graph.prefs.settings.collectAsStateWithLifecycle()
+    SwitchRow("送る写真を縮小する", s.shrinkImages, "長辺 2048px の JPEG にして送ります (通信量と待ち時間を減らす)。位置情報などの撮影情報は送られません。透過のある画像・GIF・動画はそのまま送ります") { v -> graph.prefs.updateSettings { it.copy(shrinkImages = v) } }
     SwitchRow("Enter キーで送信する", s.sendWithEnter, "外付けキーボード向け。Shift+Enter で改行します。OFF のときは送信ボタンで送ります") { v -> graph.prefs.updateSettings { it.copy(sendWithEnter = v) } }
 }
 

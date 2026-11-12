@@ -4,6 +4,12 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.util.LruCache
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,6 +19,14 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.IconCompat
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.toBitmap
+import com.giracle.android.ui.ChannelShortcuts
+import kotlinx.coroutines.withTimeoutOrNull
 import com.giracle.android.AppGraph
 import com.giracle.android.GiracleApp
 import com.giracle.android.MainActivity
@@ -47,6 +61,10 @@ object Notifier {
                 store.notices.collect { n -> if (!store.appInForeground) post(context, n) }
             }
         }
+        graph.scope.launch {
+            // アカウントが変わったら、前のアカウントのアイコンを使わない
+            graph.storeFlow.collect { synchronized(icons) { icons.evictAll() } }
+        }
     }
 
     fun canPost(context: Context): Boolean =
@@ -54,13 +72,42 @@ object Notifier {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     /** チャンネルごとの、通知に出している最近のメッセージ (会話の形でまとめる。D-022) */
-    private class Line(val messageId: String?, val sender: String, val text: String, val time: Long)
+    private class Line(val messageId: String?, val senderId: String?, val sender: String, val text: String, val time: Long)
+
+    /** 送信者のアイコン (丸く切り抜いたもの)。通知のたびに読み込まないよう覚えておく (#26) */
+    private val icons = LruCache<String, IconCompat>(32)
+    private const val ICON_PX = 128
+    private const val ICON_TIMEOUT_MS = 3000L
+
+    /** 送信者のアイコンを読み込む。間に合わない・失敗したときは null (名前だけで出す) */
+    private suspend fun senderIcon(context: Context, userId: String): IconCompat? {
+        synchronized(icons) { icons.get(userId) }?.let { return it }
+        val graph = (context.applicationContext as GiracleApp).graph
+        val bmp = withTimeoutOrNull(ICON_TIMEOUT_MS) {
+            val req = ImageRequest.Builder(context).data(graph.api.iconUrl(userId)).size(ICON_PX).allowHardware(false).build()
+            (SingletonImageLoader.get(context).execute(req) as? SuccessResult)?.image?.toBitmap()
+        } ?: return null
+        val icon = IconCompat.createWithBitmap(circle(bmp))
+        synchronized(icons) { icons.put(userId, icon) }
+        return icon
+    }
+
+    private fun circle(src: Bitmap): Bitmap {
+        val size = minOf(src.width, src.height)
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        c.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+        c.drawBitmap(src, ((size - src.width) / 2f), ((size - src.height) / 2f), paint)
+        return out
+    }
     private val conversations = HashMap<String, ArrayDeque<Line>>()
     private const val MAX_LINES = 8
 
     private fun channelTag(channelId: String) = "ch:$channelId"
 
-    fun post(context: Context, n: InAppNotice, tag: String? = null) {
+    suspend fun post(context: Context, n: InAppNotice, tag: String? = null) {
         if (!canPost(context)) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -86,18 +133,31 @@ object Notifier {
             val lines = synchronized(conversations) {
                 val q = conversations.getOrPut(ch) { ArrayDeque() }
                 if (n.messageId != null && q.any { it.messageId == n.messageId }) return
-                q.addLast(Line(n.messageId, n.sender ?: n.title, n.body, System.currentTimeMillis()))
+                q.addLast(Line(n.messageId, n.senderId, n.sender ?: n.title, n.body, System.currentTimeMillis()))
                 while (q.size > MAX_LINES) q.removeFirst()
                 q.toList()
             }
-            val channelName = runCatching {
-                (context.applicationContext as GiracleApp).graph.store.channels.value.firstOrNull { it.id == ch }?.name
+            val graph = (context.applicationContext as GiracleApp).graph
+            val channelName = n.channelName ?: runCatching {
+                graph.store.channels.value.firstOrNull { it.id == ch }?.name
             }.getOrNull()
+            // 送信者ごとに 1 回だけアイコンを読む (#26)
+            val iconsById = lines.mapNotNull { it.senderId }.distinct().associateWith { senderIcon(context, it) }
             val style = NotificationCompat.MessagingStyle(Person.Builder().setName("自分").build())
                 .setConversationTitle(channelName?.let { "#$it" })
                 .setGroupConversation(channelName != null)
-            lines.forEach { l -> style.addMessage(l.text, l.time, Person.Builder().setName(l.sender).build()) }
+            lines.forEach { l ->
+                val person = Person.Builder().setName(l.sender).apply {
+                    if (l.senderId != null) setKey(l.senderId)
+                    l.senderId?.let { iconsById[it] }?.let { setIcon(it) }
+                }.build()
+                style.addMessage(l.text, l.time, person)
+            }
             builder.setStyle(style).setContentTitle(n.title).setContentText(n.body)
+            n.senderId?.let { iconsById[it] }?.let { builder.setLargeIcon(it.toIcon(context)) }
+            // チャンネルのショートカットと結び付けると、Android 11 以降で「会話」として通知欄の上段に出る (#26)
+            ChannelShortcuts.publish(context, ch, channelName)
+            builder.setShortcutId(ChannelShortcuts.shortcutId(ch))
             // 通知から直接「返信」「既読にする」 (D-022)。対象は一番新しいメッセージ
             fun action(act: String, req: Int) = PendingIntent.getBroadcast(
                 context, req,

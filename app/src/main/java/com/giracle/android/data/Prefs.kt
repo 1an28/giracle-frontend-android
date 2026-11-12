@@ -29,6 +29,8 @@ data class ClientSettings(
     val keepConnection: Boolean = false,
     /** 画像を自動で読み込む (通信量節約用に OFF にできる) */
     val autoLoadImages: Boolean = true,
+    /** 送る写真を縮小する (長辺 2048px の JPEG。#28) */
+    val shrinkImages: Boolean = true,
     /** 文字サイズの倍率 */
     val fontScale: Float = 1f,
 )
