@@ -116,12 +116,12 @@ dependencies {
 
 // Robolectric は実行時に Android 本体の jar を自前でダウンロードするが、プロキシ環境では失敗するため、
 // Gradle で取得してオフラインモードで使う。
-val robolectricRuntime: Configuration by configurations.creating
+val robolectricRuntime: Configuration = configurations.create("robolectricRuntime")
 dependencies {
     robolectricRuntime("org.robolectric:android-all-instrumented:15-robolectric-13954326-i7")
 }
 val robolectricDepsDir = layout.buildDirectory.dir("robolectric-deps")
-val copyRobolectricDeps by tasks.registering(Copy::class) {
+val copyRobolectricDeps = tasks.register<Copy>("copyRobolectricDeps") {
     from(robolectricRuntime)
     into(robolectricDepsDir)
 }

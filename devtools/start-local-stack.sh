@@ -22,5 +22,10 @@ if [ ! -d "$WEB_DIR" ]; then
 fi
 (cd "$BACKEND_DIR" && nohup bun run src/index.ts > "$HOME/backend.log" 2>&1 &)
 (cd "$WEB_DIR" && nohup npx vite --port 3333 --strictPort --host > "$HOME/web.log" 2>&1 &)
-sleep 6
-curl -sf localhost:3333/api/server/config > /dev/null && echo "stack up: $ORIGIN"
+# 起動を待つ (初回の vite は数秒以上かかることがある)
+for _ in $(seq 60); do
+  if curl -sf localhost:3333/api/server/config > /dev/null; then echo "stack up: $ORIGIN"; exit 0; fi
+  sleep 1
+done
+echo "stack did not come up (see $HOME/backend.log and $HOME/web.log)" >&2
+exit 1

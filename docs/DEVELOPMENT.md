@@ -47,7 +47,11 @@ GIRACLE_TEST_SERVER=http://localhost:3333 ./gradlew :app:testDebugUnitTest   # �
 
 - `LiveServerTest`: 管理者 (`GIRACLE_TEST_ADMIN_USER` / `GIRACLE_TEST_ADMIN_PASS`、既定 admin / password123) で
   招待コードを作り、2 ユーザーで送受信・WebSocket の反映などを確認する。
-- `UiScreenshotTest`: `seed-demo.sh` のデータで実際の画面を描画し、`app/build/screenshots/` に PNG を出す。
+- `UiScreenshotTest`: 管理者でテストごとに専用のチャンネルを作り、実際の画面を描画して `app/build/screenshots/` に PNG を出す。
+  デモデータ (`seed-demo.sh`) は要らない。要素は文言ではなく `ui/common/TestTags.kt` の名前 (testTag) で探す (D-016)。
+- 管理者は、サーバーを立てた直後に最初に登録したユーザーがなる:
+  `curl -X PUT localhost:3333/api/user/sign-up -H 'content-type: application/json' -d '{"username":"admin","password":"password123"}'`
+- CI では `live-test.yml` が同じ手順でサーバーを立ててこれらを動かし、スクリーンショットを成果物 `screenshots` に残す。
 - Robolectric はプロキシ環境で自前のダウンロードに失敗するため、Gradle で取得してオフラインで動かす設定にしてある。
 
 ## プッシュ通知の確認 (サーバー側)

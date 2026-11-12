@@ -1,0 +1,50 @@
+name: live-test
+
+# 実サーバーを使うテスト (LiveServerTest / UiScreenshotTest) を、ランナー上に立てたサーバーに対して動かす。
+# サーバーは参照先 (giracle-backend / giracle-frontend-solid) の最新版を取ってきて使う (D-016)。
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: oven-sh/setup-bun@v2
+      - name: Install SDK packages
+        run: .github/scripts/sdk-install.sh
+      - name: Start local server
+        run: devtools/start-local-stack.sh
+      - name: Create admin user
+        # 最初に登録したユーザーが管理者になる
+        run: |
+          curl -sf -X PUT http://localhost:3333/api/user/sign-up -H 'content-type: application/json' \
+            -d '{"username":"admin","password":"password123"}'
+      - name: Tests against local server
+        env:
+          GIRACLE_TEST_SERVER: http://localhost:3333
+        run: ./gradlew :app:testDebugUnitTest
+      - name: Check live tests were not skipped
+        run: |
+          set -e
+          for c in LiveServerTest UiScreenshotTest; do
+            f=app/build/test-results/testDebugUnitTest/TEST-com.giracle.android.$c.xml
+            grep -o '<testsuite [^>]*>' "$f"
+            grep -q 'skipped="0"' "$f" || { echo "$c にスキップされたテストがある" >&2; exit 1; }
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots
+          path: app/build/screenshots/*.png
+      - name: Server logs
+        if: failure()
+        run: tail -n 100 ~/backend.log ~/web.log || true

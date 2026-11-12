@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.giracle.android.ui.common.TestTags
 import com.giracle.android.data.ChatStore
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -114,6 +116,7 @@ fun MessageItem(
             m.replyingMessageId?.let { ReplyPreview(it, m.channelId, cb) }
             Row(
                 Modifier.fillMaxWidth()
+                    .testTag(TestTags.message(m.id))
                     .background(if (highlighted) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
                     .combinedClickable(onClick = {}, onLongClick = { cb.onLongPress(m) })
                     .padding(start = 12.dp, end = 12.dp, top = if (showHeader) 8.dp else 1.dp, bottom = 2.dp),
@@ -175,7 +178,7 @@ private fun LongText(m: Message, myId: String?, cb: MessageCallbacks) {
         MessageText(preview, myId, cb)
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TextButton(onClick = { cb.onExpand(m) }) { Text("長文メッセージを展開する") }
+            TextButton(onClick = { cb.onExpand(m) }, modifier = Modifier.testTag(TestTags.expandLongText(m.id))) { Text("長文メッセージを展開する") }
             Spacer(Modifier.weight(1f))
             if (myId != null && MessageParser.mentions(m.content, myId)) Badge("@メンション", strong = true)
             Badge("${m.content.length}文字")
@@ -434,7 +437,8 @@ private fun Reactions(m: Message, cb: MessageCallbacks) {
         for (r in m.reactionSummary) {
             val mine = r.includingYou
             Row(
-                Modifier.clip(RoundedCornerShape(12.dp))
+                Modifier.testTag(TestTags.reaction(m.id, r.emojiCode))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(if (mine) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
                     .border(1.dp, if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
                     .combinedClickable(onClick = { cb.onToggleReaction(m, r.emojiCode) }, onLongClick = { cb.onReactionLongPress(m, r.emojiCode) })

@@ -26,11 +26,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.giracle.android.ui.common.TestTags
 import com.giracle.android.data.Emojis
 import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.LocalStore
@@ -59,7 +61,7 @@ private sealed interface PickItem {
  * Web 版で付けたリアクションと同じものとして数えられる。
  */
 @Composable
-fun EmojiPicker(onPick: (String) -> Unit) {
+fun EmojiPicker(modifier: Modifier = Modifier, onPick: (String) -> Unit) {
     val ctx = LocalContext.current
     val graph = LocalGraph.current
     val store = LocalStore.current
@@ -102,8 +104,8 @@ fun EmojiPicker(onPick: (String) -> Unit) {
         onPick(code)
     }
 
-    Column(Modifier.fillMaxWidth().height(440.dp)) {
-        OutlinedTextField(query, { query = it }, placeholder = { Text("絵文字を検索 (日本語・英語)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+    Column(modifier.fillMaxWidth().height(440.dp).testTag(TestTags.EMOJI_PICKER)) {
+        OutlinedTextField(query, { query = it }, placeholder = { Text("絵文字を検索 (日本語・英語)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag(TestTags.EMOJI_PICKER_SEARCH))
         if (query.isBlank() && headers.size > 1) {
             PrimaryScrollableTabRow(selectedTabIndex = 0, edgePadding = 8.dp, divider = {}) {
                 headers.forEach { (title, idx) ->
@@ -115,8 +117,8 @@ fun EmojiPicker(onPick: (String) -> Unit) {
             items(items, span = { if (it is PickItem.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) }, contentType = { it::class }) { it ->
                 when (it) {
                     is PickItem.Header -> Text(it.title, Modifier.padding(8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    is PickItem.Uni -> Box(Modifier.size(44.dp).clickable { pick(it.code) }, contentAlignment = Alignment.Center) { Text(it.char, fontSize = 26.sp) }
-                    is PickItem.Custom -> Box(Modifier.size(44.dp).clickable { pick(it.code) }, contentAlignment = Alignment.Center) {
+                    is PickItem.Uni -> Box(Modifier.size(44.dp).testTag(TestTags.emojiPickerItem(it.code)).clickable { pick(it.code) }, contentAlignment = Alignment.Center) { Text(it.char, fontSize = 26.sp) }
+                    is PickItem.Custom -> Box(Modifier.size(44.dp).testTag(TestTags.emojiPickerItem(it.code)).clickable { pick(it.code) }, contentAlignment = Alignment.Center) {
                         AsyncImage(model = graph.api.customEmojiUrl(it.code), contentDescription = it.code, modifier = Modifier.size(30.dp))
                     }
                 }
