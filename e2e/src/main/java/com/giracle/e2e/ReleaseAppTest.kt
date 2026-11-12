@@ -173,11 +173,28 @@ class ReleaseAppTest {
     }
 
     private fun wait(sel: BySelector, timeoutMs: Long, what: String): UiObject2 =
-        device.wait(Until.findObject(sel), timeoutMs) ?: run {
+        waitDismissingSystemDialogs(sel, timeoutMs) ?: run {
             assertAlive("「$what」を待つ間")
             shot("missing")
             fail("「$what」が ${timeoutMs / 1000} 秒以内に出ない"); error("unreachable")
         }
+
+    /**
+     * 要素を待つ。間に、ほかのアプリの「応答していません」ダイアログ (エミュレータが重いときに出る) が
+     * 画面を覆ったら「待つ」を押して閉じる。アプリ自身の不具合ではないので、確認を止めない。
+     */
+    private fun waitDismissingSystemDialogs(sel: BySelector, timeoutMs: Long): UiObject2? {
+        val end = SystemClock.uptimeMillis() + timeoutMs
+        while (true) {
+            device.findObject(By.res("android:id/aerr_wait"))?.let {
+                Log.w(TAG, "システムのダイアログを閉じた: " + device.findObject(By.res("android:id/alertTitle"))?.text)
+                it.click()
+            }
+            val left = end - SystemClock.uptimeMillis()
+            if (left <= 0) return null
+            device.wait(Until.findObject(sel), minOf(left, 2_000L))?.let { return it }
+        }
+    }
 
     /** 一覧を送りながら探す (画面の外にある行・タブ用) */
     private fun findScrolling(sel: BySelector, what: String): UiObject2 {

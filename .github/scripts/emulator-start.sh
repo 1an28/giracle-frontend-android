@@ -61,6 +61,8 @@ echo "boot: $(( $(date +%s) - t1 ))s"
 "$ADB" shell settings put global transition_animation_scale 0
 "$ADB" shell settings put global animator_duration_scale 0
 "$ADB" shell svc power stayon true
+# 起動直後は重く、ホーム画面アプリなどの「応答していません」ダイアログが出て画面を覆うことがあるので出さない
+"$ADB" shell settings put global hide_error_dialogs 1
 "$ADB" shell input keyevent 82 || true
 "$ADB" devices
 # 後の手順から adb を使えるようにする
