@@ -150,6 +150,51 @@ class ReleaseAppTest {
         if (n == null) fail("常時接続で背面にいるときのメンションが通知されない")
         device.pressBack()
         assertAlive("通知を受けた後")
+
+        // 9. プッシュ通知 (D-019): ログイン後に自動で有効になり (配信アプリが無いので Google Play 開発者サービス経由)、
+        //    アプリのプロセスが無い状態でも、サーバーの Web Push が FCM 経由で届いて通知になる
+        launch()
+        wait(res("screen.settings"), 10_000, "設定画面に戻る")
+        wait(By.text("通知"), 5_000, "通知タブ").click()
+        findScrolling(keep, "常時接続の設定").let { it.findObject(By.checkable(true)) ?: it }.click()
+        waitFor("常時接続の設定が OFF になる") { device.findObject(keep)?.findObject(By.checkable(true))?.isChecked == false }
+        waitFor("前面サービスが止まる", 15_000) { !shell("dumpsys activity services $pkg").contains("isForeground=true") }
+        val status = res("settings.push_status")
+        findScrolling(status, "プッシュ通知の状態")
+        if (!pushEnabled(status, 60_000)) {
+            // 自動の登録が済んでいなければ、ボタンで登録する (Google Play 開発者サービスの準備が遅いことがある)
+            Log.w(TAG, "自動では有効になっていない: " + device.findObject(status)?.text)
+            findScrolling(res("settings.push_enable"), "プッシュ通知の有効化ボタン").click()
+            if (!pushEnabled(status, 90_000)) {
+                shot("push_status")
+                fail("プッシュ通知が有効にならない: " + device.findObject(status)?.text)
+            }
+        }
+        Log.i(TAG, "プッシュ通知の状態: " + device.findObject(status)?.text)
+        shot("push_enabled")
+
+        device.pressHome()
+        SystemClock.sleep(3_000)
+        // 背面のプロセスを終わらせる (利用者がアプリを使っていない間に OS が終わらせるのと同じ状態)
+        shell("am kill $pkg")
+        val killed = runCatching { waitFor("背面のプロセスが終わる", 10_000) { shell("pidof $pkg").isBlank() } }.isSuccess
+        Log.i(TAG, "プロセスを終わらせた: $killed")
+        val pushText = "プッシュテスト @<${admin.userId}> $suffix"
+        bob.send(channelId, pushText)
+        device.openNotification()
+        val pn = device.wait(Until.findObject(By.textContains("プッシュテスト")), 60_000)
+        shot("push_notification")
+        if (pn == null) fail("プッシュ通知が届かない (プロセスを終わらせた: $killed)")
+        device.pressBack()
+    }
+
+    private fun pushEnabled(status: BySelector, timeoutMs: Long): Boolean {
+        val end = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < end) {
+            if (device.findObject(status)?.text?.startsWith("有効") == true) return true
+            SystemClock.sleep(1_000)
+        }
+        return false
     }
 
     // ---------- 補助 ----------

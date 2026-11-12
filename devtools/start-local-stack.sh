@@ -15,6 +15,9 @@ if [ ! -d "$BACKEND_DIR" ]; then
   (cd "$BACKEND_DIR" && cp .env.sample .env \
     && sed -i "s#^CORS_ORIGIN=.*#CORS_ORIGIN=$ORIGIN#; s/^RATE_LIMIT_ENABLED=true/RATE_LIMIT_ENABLED=false/" .env \
     && bun i && bun run db:migrate && bun run db:seed)
+  # プッシュ通知 (Web Push) を送れるよう VAPID 鍵を作って入れる (本番と同じく設定済みの状態にする。D-019)
+  (cd "$BACKEND_DIR" && keys=$(bun -e 'const k=require("web-push").generateVAPIDKeys();console.log(k.publicKey+" "+k.privateKey)') \
+    && sed -i "s#^VAPID_PUBLIC_KEY=.*#VAPID_PUBLIC_KEY=${keys% *}#; s#^VAPID_PRIVATE_KEY=.*#VAPID_PRIVATE_KEY=${keys#* }#" .env)
 fi
 if [ ! -d "$WEB_DIR" ]; then
   git clone --depth 1 https://github.com/NfoAlex/giracle-frontend-solid.git "$WEB_DIR"

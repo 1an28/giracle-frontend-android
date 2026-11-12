@@ -104,6 +104,8 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.coil.gif)
     implementation(libs.unifiedpush.connector)
+    // 配信アプリが無い端末でも、Google Play 開発者サービス経由でサーバーの Web Push を受け取る (D-019)
+    implementation(libs.unifiedpush.embedded.fcm)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

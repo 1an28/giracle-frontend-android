@@ -144,11 +144,18 @@ class AppGraph(context: Context) {
     }
 
     suspend fun signOut() {
+        // サーバーから端末の登録を消すにはログイン中のトークンが要るので、ログアウトより先に解く
+        com.giracle.android.notify.PushRegistrar.onSignOut(appContext, this)
         runCatching { api.signOut() }
         signOutLocal()
     }
 
     private fun signOutLocal() {
+        // セッション切れでも、前のユーザー宛ての通知を受け続けないよう配信先の登録を解く
+        if (prefs.pushEndpoint != null) {
+            prefs.pushEndpoint = null
+            runCatching { org.unifiedpush.android.connector.UnifiedPush.unregister(appContext) }
+        }
         store.stop()
         prefs.clearSession()
         snapshotFile.delete()

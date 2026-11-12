@@ -49,6 +49,8 @@ object TestTags {
 
     // 設定
     const val SETTINGS_KEEP_CONNECTION = "settings.keep_connection"
+    const val SETTINGS_PUSH_STATUS = "settings.push_status"
+    const val SETTINGS_PUSH_ENABLE = "settings.push_enable"
 
     // メッセージの操作 (長押しで出るシート) と絵文字ピッカー
     const val MESSAGE_ACTIONS = "message_actions"

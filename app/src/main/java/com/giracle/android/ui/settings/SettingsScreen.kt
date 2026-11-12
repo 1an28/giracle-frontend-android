@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.giracle.android.ui.common.TestTags
+import com.giracle.android.notify.PushRegistrar
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -217,7 +218,7 @@ private fun ColumnScope.NotificationTab() {
     SwitchRow(
         "バックグラウンドでも接続を保つ", s.keepConnection,
         "アプリを閉じても通知を受け取れるよう、常駐して接続を保ちます。電池を多めに使います。" +
-            "(サーバーがアプリ向けのプッシュ通知に対応すれば不要になります)",
+            "下のプッシュ通知が使えるなら不要です",
         tag = TestTags.SETTINGS_KEEP_CONNECTION,
     ) { v -> graph.prefs.updateSettings { it.copy(keepConnection = v) } }
     HorizontalDivider()
@@ -372,56 +373,51 @@ private fun ColumnScope.AppTab() {
 }
 
 /**
- * UnifiedPush によるプッシュ通知。サーバーの Web Push をそのまま受け取る。
- * 配信アプリ (ntfy など) が端末に必要。サーバーに VAPID 鍵が設定されている必要がある。
+ * プッシュ通知 (D-019)。サーバーの Web Push を UnifiedPush で受け取る。
+ * 配信アプリ (ntfy など) があればそれを、無ければ Google Play 開発者サービス経由 (アプリに組み込んだ配信) を使う。
  */
 @Composable
 private fun PushSection() {
     val graph = LocalGraph.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf(pushStatus(ctx, graph.prefs.pushEndpoint)) }
+    val endpoint by graph.prefs.pushEndpointFlow.collectAsStateWithLifecycle()
+    var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    Text("プッシュ通知 (UnifiedPush)", style = MaterialTheme.typography.titleSmall)
+    Text("プッシュ通知", style = MaterialTheme.typography.titleSmall)
     Text(
-        "アプリを閉じていても通知を受け取れます。端末に UnifiedPush の配信アプリ (ntfy など) を入れておく必要があります。常時接続より電池にやさしい方法です。",
+        "アプリを閉じていても通知を受け取れます。常時接続より電池にやさしい方法です。" +
+            "Google Play 開発者サービスがあればそのまま使えます。UnifiedPush の配信アプリ (ntfy など) を入れている場合はそちらを使います。",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Text(status, style = MaterialTheme.typography.bodyMedium)
+    Text(
+        message ?: PushRegistrar.status(ctx, endpoint),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.testTag(TestTags.SETTINGS_PUSH_STATUS),
+    )
+    // 登録が済んだら (宛先が変わったら) 一時的な案内を消して、今の状態を出す
+    LaunchedEffect(endpoint) { if (endpoint != null) message = null }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = !busy, onClick = {
+        Button(enabled = !busy, modifier = Modifier.testTag(TestTags.SETTINGS_PUSH_ENABLE), onClick = {
             busy = true
             scope.launch {
-                try {
-                    val key = graph.api.vapidPublicKey()
-                    val activity = ctx as? android.app.Activity ?: error("no activity")
-                    org.unifiedpush.android.connector.UnifiedPush.tryUseCurrentOrDefaultDistributor(activity) { ok ->
-                        if (ok) {
-                            org.unifiedpush.android.connector.UnifiedPush.register(ctx, vapid = key)
-                            status = "登録しました。数秒で有効になります"
-                        } else {
-                            status = "配信アプリが見つかりません。ntfy などの UnifiedPush 配信アプリを入れてから、もう一度押してください"
-                        }
+                val activity = ctx as? android.app.Activity
+                if (activity == null) { busy = false; return@launch }
+                PushRegistrar.enable(activity, graph) { r ->
+                    message = when (r) {
+                        PushRegistrar.Result.Requested -> "登録しています。数秒で有効になります"
+                        PushRegistrar.Result.NoDistributor -> "使える配信先がありません。Google Play 開発者サービスの無い端末では、" +
+                            "ntfy などの UnifiedPush 配信アプリを入れてから、もう一度押してください"
+                        PushRegistrar.Result.ServerNotConfigured -> "このサーバーはプッシュ通知 (VAPID 鍵) が設定されていません。管理者に設定を依頼してください"
+                        is PushRegistrar.Result.Failed -> r.error.userMessage()
                     }
-                } catch (e: com.giracle.android.data.net.ApiException) {
-                    status = if (e.code == 503) "このサーバーはプッシュ通知 (VAPID 鍵) が設定されていません。管理者に設定を依頼してください" else e.userMessage()
-                } catch (e: Exception) {
-                    status = e.userMessage()
-                } finally { busy = false }
+                    busy = false
+                }
             }
-        }) { Text(if (graph.prefs.pushEndpoint != null) "再登録" else "有効にする") }
-        if (graph.prefs.pushEndpoint != null) OutlinedButton(onClick = {
-            org.unifiedpush.android.connector.UnifiedPush.unregister(ctx)
-            status = "無効にしました"
+        }) { Text(if (endpoint != null) "再登録" else "有効にする") }
+        if (endpoint != null) OutlinedButton(onClick = {
+            PushRegistrar.disable(ctx, graph)
+            message = "無効にしました"
         }) { Text("無効にする") }
-    }
-}
-
-private fun pushStatus(ctx: android.content.Context, endpoint: String?): String {
-    val dists = runCatching { org.unifiedpush.android.connector.UnifiedPush.getDistributors(ctx) }.getOrDefault(emptyList())
-    return when {
-        endpoint != null -> "有効 (配信: ${org.unifiedpush.android.connector.UnifiedPush.getAckDistributor(ctx) ?: "?"})"
-        dists.isEmpty() -> "配信アプリが入っていません"
-        else -> "未設定 (使える配信アプリ: ${dists.size} 個)"
     }
 }

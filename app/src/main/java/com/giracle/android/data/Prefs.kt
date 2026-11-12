@@ -66,10 +66,21 @@ class Prefs(context: Context, name: String = "giracle") : TokenStore {
         get() = sp.getString(K_LAST_CHANNEL, null)
         set(v) = sp.edit().putString(K_LAST_CHANNEL, v).apply()
 
-    /** UnifiedPush で登録した宛先 URL (解除時に使う) */
+    private val _pushEndpoint = MutableStateFlow(sp.getString(K_PUSH_ENDPOINT, null))
+
+    /** プッシュ通知の宛先として、サーバーに登録済みの URL (解除時に使う)。null なら未登録 */
+    val pushEndpointFlow: StateFlow<String?> = _pushEndpoint
     var pushEndpoint: String?
-        get() = sp.getString("pushEndpoint", null)
-        set(v) = sp.edit().putString("pushEndpoint", v).apply()
+        get() = _pushEndpoint.value
+        set(v) {
+            _pushEndpoint.value = v
+            sp.edit().putString(K_PUSH_ENDPOINT, v).apply()
+        }
+
+    /** 利用者が設定でプッシュ通知を無効にした (自動では有効にしない)。D-019 */
+    var pushOptOut: Boolean
+        get() = sp.getBoolean(K_PUSH_OPT_OUT, false)
+        set(v) = sp.edit().putBoolean(K_PUSH_OPT_OUT, v).apply()
 
     /** チャンネル一覧の並び順 (ユーザーが並べ替えたもの) */
     var channelOrder: List<String>
@@ -102,5 +113,7 @@ class Prefs(context: Context, name: String = "giracle") : TokenStore {
         const val K_LAST_CHANNEL = "lastChannel"
         const val K_ORDER = "channelOrder"
         const val K_SETTINGS = "clientSettings"
+        const val K_PUSH_ENDPOINT = "pushEndpoint"
+        const val K_PUSH_OPT_OUT = "pushOptOut"
     }
 }
