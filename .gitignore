@@ -33,3 +33,7 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# 署名関連 (公開リポジトリのため絶対にコミットしない)
+keystore.properties
+keystore/
