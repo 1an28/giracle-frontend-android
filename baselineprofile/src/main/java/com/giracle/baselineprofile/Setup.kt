@@ -46,9 +46,13 @@ internal object Setup {
         return id
     }
 
-    /** ログイン画面ならログインする (記録の最初の 1 回だけ通る) */
+    /** 起動直後に出る画面 (ログイン・ホーム・前回開いていたチャンネルのどれか) を 1 回の待ちで見分ける (#31) */
+    private val FIRST_SCREEN = By.res(java.util.regex.Pattern.compile("login\\.server_url|screen\\.home|screen\\.channel"))
+
+    /** ログイン画面ならログインする (記録の最初の 1 回だけ通る)。どの画面でもなければ失敗にする */
     fun loginIfNeeded(device: UiDevice) {
-        val url = device.wait(Until.findObject(By.res("login.server_url")), 3_000) ?: return
+        device.wait(Until.findObject(FIRST_SCREEN), 20_000) ?: error("起動後に画面が出ない")
+        val url = device.findObject(By.res("login.server_url")) ?: return
         url.text = server
         device.findObject(By.res("login.connect")).click()
         device.wait(Until.findObject(By.res("login.username")), 20_000)!!.text = adminUser
@@ -58,13 +62,15 @@ internal object Setup {
         device.wait(Until.findObject(By.res("screen.home")), 30_000) ?: error("ログイン後にホーム画面が出ない")
     }
 
-    /** よく使う流れ: ホーム → チャンネルを開く → 履歴をスクロール → 戻る → 設定 → 戻る */
+    /** よく使う流れ: (前回のチャンネル) → ホーム → チャンネルを開く → 履歴をスクロール → 戻る → 設定 → 戻る */
     fun typicalUse(device: UiDevice, channelId: String) {
-        device.wait(Until.findObject(By.res("screen.home")), 20_000) ?: run {
-            // 前回開いていたチャンネルが復元された場合は、ホームに戻る
+        device.wait(Until.findObject(FIRST_SCREEN), 20_000) ?: error("画面が出ない")
+        // 前回開いていたチャンネルが復元されていたら、その画面も記録に入れてからホームに戻る (以前はホームを 20 秒待ってから戻っていた)
+        if (device.hasObject(By.res("screen.channel"))) {
+            device.wait(Until.findObject(By.res("channel.messages")), 10_000)
             device.pressBack()
-            device.wait(Until.findObject(By.res("screen.home")), 10_000) ?: error("ホーム画面が出ない")
         }
+        device.wait(Until.findObject(By.res("screen.home")), 10_000) ?: error("ホーム画面が出ない")
         val row = findScrolling(device, "home.channel:$channelId") ?: error("記録用チャンネルが一覧に無い")
         row.click()
         val list = device.wait(Until.findObject(By.res("channel.messages")), 15_000) ?: error("チャンネル画面が出ない")

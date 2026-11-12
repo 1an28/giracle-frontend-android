@@ -72,8 +72,9 @@ devtools/start-local-stack.sh   # 管理者 admin / password123 も作ってお�
 
 ## Baseline Profile の記録と起動時間の計測 (#8、D-021)
 
-CI (`baseline-profile.yml`、`baselineprofile/` を変えた PR と手動実行) が、エミュレータで次を行う。
-配布版のリリース (`release.yml`) も、ビルドの前に同じスクリプトで記録し直す (失敗したらリポジトリの内容のまま出す)。
+CI (`baseline-profile.yml`。main への push・`baselineprofile/` を変えた PR・手動実行) が、エミュレータで次を行う。
+配布版のリリース (`release.yml`) は、main の同じコミットの記録 (成果物) を使う。無ければリリースの中で記録する
+(失敗したらリポジトリの内容のまま出す)。
 
 1. 難読化しない配布版 (`assembleNonMinifiedRelease`) を入れ、`BaselineProfileGenerator` で
    ログイン → ホーム → チャンネルを開いてスクロール → 設定、を繰り返して使われたコードを記録する

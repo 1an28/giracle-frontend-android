@@ -18,7 +18,8 @@ class BaselineProfileGenerator {
 
     @Test fun generate() {
         val channelId = Setup.prepare()
-        rule.collect(packageName = Setup.pkg, includeInStartupProfile = true) {
+        // くり返しは最大 6 回 (既定は 15 回)。2 回続けて同じ内容になれば止める。毎回同じ流れなので、これで足りる (#31)
+        rule.collect(packageName = Setup.pkg, maxIterations = 6, stableIterations = 2, includeInStartupProfile = true) {
             pressHome()
             startActivityAndWait()
             Setup.loginIfNeeded(device)
