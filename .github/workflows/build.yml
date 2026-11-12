@@ -1,10 +1,16 @@
 name: build
 
 on:
+  # PR のブランチは pull_request で走るので、push は main だけにする (同じコミットで 2 回走らせない。#31)
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+# 同じブランチに続けて push したときは、古い実行を取り消す
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
