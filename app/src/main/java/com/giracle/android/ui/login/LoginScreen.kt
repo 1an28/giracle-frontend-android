@@ -32,6 +32,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import com.giracle.android.ui.common.TestTags
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -109,10 +111,10 @@ fun LoginScreen() {
                 if (tab == 1 && !canRegister) {
                     Text("このサーバーは新規登録を受け付けていません", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    OutlinedTextField(username, { username = it }, label = { Text("ユーザー名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(username, { username = it }, label = { Text("ユーザー名") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag(TestTags.LOGIN_USERNAME))
                     OutlinedTextField(
                         password, { password = it }, label = { Text("パスワード (4 文字以上)") }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().testTag(TestTags.LOGIN_PASSWORD),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     )
                     val needInvite = tab == 1 && s.registerInviteOnly && !s.isFirstUser
@@ -131,7 +133,7 @@ fun LoginScreen() {
                             }
                         },
                         enabled = !busy && username.isNotBlank() && password.length >= 4,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag(TestTags.LOGIN_SUBMIT),
                     ) { Text(if (tab == 0) "ログイン" else "登録してログイン") }
                 }
                 TextButton(onClick = { server = null }) { Text("別のサーバーに接続") }

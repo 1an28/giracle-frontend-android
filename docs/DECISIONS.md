@@ -155,3 +155,29 @@
   変えても全ファイルの差分が増えるだけのため。署名鍵と証明書の指紋 (`releases/SIGNING_CERT_SHA256`) も変わらない。
 - **利用者への影響**: 新しい版を入れ直してログインし直す。古い版 (`com.giracle.android`) は手で消す。
 - **代替案**: `io.github.ian28...` のように読み替える、独自ドメインを使う。どちらも持ち主の名前とずれるため採らなかった。
+
+## D-016 画面要素の名前 (testTag) と、実サーバーを使うテストの作り
+([#11](https://github.com/1an28/giracle-frontend-kotlin/issues/11))
+
+- **testTag を resource-id として公開する**: `Root` の根元で `testTagsAsResourceId = true` にする
+  (`ui/common/TestTags.kt` の `exposeTestTags()`)。JVM 上のテスト (`UiScreenshotTest`) と、配布版を
+  エミュレータで外から操作する確認 ([#12](https://github.com/1an28/giracle-frontend-kotlin/issues/12)、UI Automator の `By.res`) で
+  同じ名前を使えるようにするため。ボトムシートとダイアログは別ウィンドウで根元の設定が届かないので、中身にも付ける。
+  - 代償: 付けた要素の分だけ、アクセシビリティ情報に resource-id が増える。動作や見た目は変わらない。
+- **名前の付け方**: すべて `TestTags` に定数・関数で置き、画面のコードとテストの両方がそこを参照する。
+  形は「画面.要素」(`screen.home`、`composer.send`、`message_actions.emoji_picker`)。
+  一覧の行のように同じ要素が並ぶものは「:ID」を付ける (`home.channel:<チャンネル ID>`、`channel.message:<メッセージ ID>`、
+  `channel.reaction:<メッセージ ID>:<絵文字コード>`)。見た目の文言とは独立させ、文言を変えてもテストが壊れないようにする。
+- **画面ごとのタグ**: 各画面は `Root` で `screen.*` のタグ付きの箱に包む。画面ごとのファイルに手を入れずに済み、
+  「どの画面にいるか」を一か所で決められる。
+- **専用チャンネル**: `UiScreenshotTest` はテストごとに専用のチャンネルを作ってメッセージを入れ、終わったら消す。
+  `seed-demo.sh` のデータや他のテストの投稿に左右されない。必要なのは管理者アカウントだけ。
+- **待ち合わせ**: `Thread.sleep` をやめ、要素が現れる・消えるまで `waitUntil` で待つ形にそろえた。
+  画像の読み込み完了は画面の情報 (semantics) に出ないので待っておらず、スクリーンショットで画像が読み込み途中のことがある。
+- **テストの規則 (v2)**: `androidx.compose.ui.test.junit4.v2.createAndroidComposeRule` に移った。
+- **CI で実サーバーのテストを動かす**: `live-test.yml` がランナー上に `devtools/start-local-stack.sh` でサーバーを立て、
+  管理者を作ってから `GIRACLE_TEST_SERVER` 付きでテストを動かす。スクリーンショットは成果物 (`screenshots`) に残す。
+  開発環境に Android SDK が無く手元で動かせないため、ここで確かめる。
+  - サーバーは参照先 (giracle-backend / giracle-frontend-solid) の最新版を毎回取ってくるので、相手側の変更で
+    失敗することがある。アプリのビルドと単体テスト (`build.yml`) とは別のワークフローにして、どちらが原因か分かるようにした。
+  - 代替案: 参照先の版を固定する。相手側の変更に気づくのが遅れるので、今は固定しない。

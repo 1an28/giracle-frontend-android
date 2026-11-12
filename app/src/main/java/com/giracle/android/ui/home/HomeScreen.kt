@@ -15,13 +15,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -62,6 +63,7 @@ import com.giracle.android.ui.common.Avatar
 import com.giracle.android.ui.common.Badge
 import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.LocalStore
+import com.giracle.android.ui.common.TestTags
 
 /** ホーム = Web 版のサイドバー。参加チャンネルと各機能への入り口 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,7 +100,7 @@ fun HomeScreen(loading: Boolean) {
                 },
                 actions = {
                     IconButton(onClick = { nav.push(Screen.Search()) }) { Icon(Icons.Default.Search, "検索") }
-                    IconButton(onClick = { nav.push(Screen.Settings) }, modifier = Modifier.clearAndSetSemantics { contentDescription = "設定"; role = Role.Button }) {
+                    IconButton(onClick = { nav.push(Screen.Settings) }, modifier = Modifier.testTag(TestTags.HOME_SETTINGS).clearAndSetSemantics { contentDescription = "設定"; role = Role.Button }) {
                         me?.let { Avatar(it.id, size = 30.dp) } ?: Icon(Icons.Default.Settings, "設定")
                     }
                 },
@@ -121,11 +123,11 @@ fun HomeScreen(loading: Boolean) {
                 NavRow(AppIcons.People, "オンライン: ${online.size} 人") { nav.push(Screen.Members) }
             }
             item(key = "inbox", contentType = "nav") {
-                NavRow(Icons.Default.Notifications, "通知", trailing = if (inbox.isNotEmpty()) inbox.size.toString() else null) { nav.push(Screen.Inbox) }
+                NavRow(Icons.Default.Notifications, "通知", TestTags.HOME_INBOX, trailing = if (inbox.isNotEmpty()) inbox.size.toString() else null) { nav.push(Screen.Inbox) }
             }
-            item(key = "browser", contentType = "nav") { NavRow(Icons.Default.List, "チャンネル一覧") { nav.push(Screen.ChannelBrowser) } }
-            item(key = "members", contentType = "nav") { NavRow(AppIcons.People, "メンバー") { nav.push(Screen.Members) } }
-            if (canManage) item(key = "manage", contentType = "nav") { NavRow(AppIcons.Storage, "サーバー管理") { nav.push(Screen.ManageServer) } }
+            item(key = "browser", contentType = "nav") { NavRow(Icons.AutoMirrored.Filled.List, "チャンネル一覧", TestTags.HOME_CHANNEL_BROWSER) { nav.push(Screen.ChannelBrowser) } }
+            item(key = "members", contentType = "nav") { NavRow(AppIcons.People, "メンバー", TestTags.HOME_MEMBERS) { nav.push(Screen.Members) } }
+            if (canManage) item(key = "manage", contentType = "nav") { NavRow(AppIcons.Storage, "サーバー管理", TestTags.HOME_MANAGE_SERVER) { nav.push(Screen.ManageServer) } }
             item(key = "hdr", contentType = "hdr") {
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -159,12 +161,12 @@ fun HomeScreen(loading: Boolean) {
 }
 
 @Composable
-private fun NavRow(icon: ImageVector, label: String, trailing: String? = null, onClick: () -> Unit) {
+private fun NavRow(icon: ImageVector, label: String, tag: String? = null, trailing: String? = null, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(label) },
         leadingContent = { Icon(icon, null) },
         trailingContent = trailing?.let { { Badge(it, strong = true) } },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.then(if (tag != null) Modifier.testTag(tag) else Modifier).clickable(onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
@@ -172,7 +174,7 @@ private fun NavRow(icon: ImageVector, label: String, trailing: String? = null, o
 @Composable
 private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boolean, onClick: () -> Unit, onMove: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = !reorder, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().testTag(TestTags.homeChannel(c.id)).clickable(enabled = !reorder, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

@@ -1,0 +1,62 @@
+package com.giracle.android.ui.common
+
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+
+/**
+ * 画面確認テストと、配布版を外から操作する確認 (UI Automator など、#12) で使う要素の名前 (testTag)。
+ * 名前は「画面.要素」の形にし、一覧の行のように同じ要素が並ぶものは「:ID」を付けて区別する (D-016)。
+ * 名前を変えるとテストと外部の確認手順が壊れるので、見た目の文言とは独立に保つ。
+ */
+object TestTags {
+    // 画面全体 (Root で各画面を包む)
+    const val SCREEN_LOGIN = "screen.login"
+    const val SCREEN_HOME = "screen.home"
+    const val SCREEN_CHANNEL = "screen.channel"
+    const val SCREEN_CHANNEL_SETTINGS = "screen.channel_settings"
+    const val SCREEN_INBOX = "screen.inbox"
+    const val SCREEN_SEARCH = "screen.search"
+    const val SCREEN_MEMBERS = "screen.members"
+    const val SCREEN_CHANNEL_BROWSER = "screen.channel_browser"
+    const val SCREEN_SETTINGS = "screen.settings"
+    const val SCREEN_MANAGE_SERVER = "screen.manage_server"
+
+    // ログイン
+    const val LOGIN_USERNAME = "login.username"
+    const val LOGIN_PASSWORD = "login.password"
+    const val LOGIN_SUBMIT = "login.submit"
+
+    // ホーム
+    const val HOME_SETTINGS = "home.settings"
+    const val HOME_INBOX = "home.inbox"
+    const val HOME_CHANNEL_BROWSER = "home.channel_browser"
+    const val HOME_MEMBERS = "home.members"
+    const val HOME_MANAGE_SERVER = "home.manage_server"
+    fun homeChannel(channelId: String) = "home.channel:$channelId"
+
+    // チャンネル
+    const val CHANNEL_MESSAGES = "channel.messages"
+    fun message(messageId: String) = "channel.message:$messageId"
+    fun reaction(messageId: String, emojiCode: String) = "channel.reaction:$messageId:$emojiCode"
+    fun expandLongText(messageId: String) = "channel.expand:$messageId"
+    const val LONG_TEXT_DIALOG = "channel.long_text"
+    const val COMPOSER_INPUT = "composer.input"
+    const val COMPOSER_SEND = "composer.send"
+
+    // メッセージの操作 (長押しで出るシート) と絵文字ピッカー
+    const val MESSAGE_ACTIONS = "message_actions"
+    const val MESSAGE_ACTIONS_EMOJI_PICKER = "message_actions.emoji_picker"
+    const val MESSAGE_ACTIONS_REPLY = "message_actions.reply"
+    const val EMOJI_PICKER = "emoji_picker"
+    const val EMOJI_PICKER_SEARCH = "emoji_picker.search"
+    fun emojiPickerItem(emojiCode: String) = "emoji_picker.item:$emojiCode"
+}
+
+/**
+ * testTag を Android の resource-id としても公開する (UI Automator から By.res で探せるようにする)。
+ * 画面の根元に 1 回付ければ子孫に効くが、ダイアログやボトムシートは別ウィンドウなので、その中身にも付ける。
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+fun Modifier.exposeTestTags(): Modifier = semantics { testTagsAsResourceId = true }
