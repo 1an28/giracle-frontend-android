@@ -161,6 +161,8 @@ fun HomeScreen(loading: Boolean) {
             items(joined, key = { it.id }, contentType = { "channel" }) { c ->
                 ChannelRow(
                     c, unread = hasNew[c.id] == true, muted = c.id in muted, reorder = reorder,
+                    // 2 ペイン (#29) で右に開いているチャンネル
+                    selected = (nav.current as? com.giracle.android.ui.Screen.Channel)?.channelId == c.id,
                     onClick = {
                         if (PendingShare.content != null) PendingShare.target = c.id
                         nav.openChannel(c.id)
@@ -193,9 +195,11 @@ private fun NavRow(icon: ImageVector, label: String, tag: String? = null, traili
 }
 
 @Composable
-private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boolean, onClick: () -> Unit, onMove: (Int) -> Unit) {
+private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boolean, selected: Boolean, onClick: () -> Unit, onMove: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().testTag(TestTags.homeChannel(c.id)).clickable(enabled = !reorder, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().testTag(TestTags.homeChannel(c.id))
+            .then(if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+            .clickable(enabled = !reorder, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

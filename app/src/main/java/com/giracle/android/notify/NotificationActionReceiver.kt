@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.core.app.RemoteInput
 import com.giracle.android.GiracleApp
 import com.giracle.android.data.ChatStore
+import com.giracle.android.data.Outbox
 import kotlinx.coroutines.launch
 
 /**
@@ -25,7 +26,15 @@ class NotificationActionReceiver : BroadcastReceiver() {
             try {
                 val store = graph.store
                 if (intent.action == ACTION_REPLY && !reply.isNullOrEmpty()) {
-                    store.send(channelId, reply, emptyList(), messageId)
+                    try {
+                        store.send(channelId, reply, emptyList(), messageId)
+                    } catch (e: Exception) {
+                        if (!Outbox.isNetworkFailure(e)) throw e
+                        // 電波が無いときは送信待ちに入れ、次につながったときに送る (#30)
+                        graph.outbox.add(channelId, reply, emptyList(), messageId)
+                        Notifier.postError(context, "返信を送信待ちにしました", tag, "次にアプリがつながったときに送ります")
+                        return@launch
+                    }
                 }
                 if (messageId != null) {
                     store.readInbox(messageId)
@@ -39,8 +48,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         }
                     }
                 }
-                // 処理が済んだら通知を消す (失敗したときは残して、アプリから操作できるようにする)
-                Notifier.cancelChannel(context, channelId)
+                // 返信したら、通知を消さずに会話へ自分の発言として足す (続けて返信できるように。#38)。
+                // 「既読にする」と、元の通知が分からないときは消す (失敗したときは残して、アプリから操作できるようにする)
+                val kept = intent.action == ACTION_REPLY && !reply.isNullOrEmpty() && Notifier.appendOwnReply(context, channelId, reply)
+                if (!kept) Notifier.cancelChannel(context, channelId)
             } catch (e: Exception) {
                 Log.w(TAG, "notification action failed", e)
                 Notifier.postError(context, if (intent.action == ACTION_REPLY) "返信を送れませんでした" else "既読にできませんでした", tag)

@@ -10,6 +10,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -24,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -138,20 +143,49 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
             if (!p.ready && p.error != null) {
                 LoadError(p.error, onRetry = graph::retryLoad)
             } else {
-                // 画面ごとに状態 (スクロール位置など) を保つため、キーを付けて描く
                 val screen = nav.current
-                androidx.compose.runtime.key(screen.stableKey()) {
-                    Box(Modifier.fillMaxSize().testTag(screen.testTag())) {
-                        when (screen) {
-                            Screen.Home -> HomeScreen(loading = !p.ready)
-                            is Screen.Channel -> ChannelScreen(screen.channelId, screen.messageId)
-                            is Screen.ChannelSettings -> ChannelSettingsScreen(screen.channelId)
-                            Screen.Inbox -> InboxScreen()
-                            is Screen.Search -> SearchScreen(screen.channelId, screen.userId)
-                            Screen.Members -> MembersScreen()
-                            Screen.ChannelBrowser -> ChannelBrowserScreen()
-                            Screen.Settings -> SettingsScreen()
-                            Screen.ManageServer -> ManageServerScreen()
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                    // 幅の広い画面 (タブレット・折りたたみ・横画面) では、ホームとチャンネルを左右に並べる (#29、D-028)
+                    val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH && (screen is Screen.Home || screen is Screen.Channel)
+                    if (twoPane) {
+                        Row(Modifier.fillMaxSize()) {
+                            Box(Modifier.width(HOME_PANE_WIDTH).fillMaxHeight().testTag(TestTags.SCREEN_HOME)) {
+                                androidx.compose.runtime.key(Screen.Home.stableKey()) { HomeScreen(loading = !p.ready) }
+                            }
+                            VerticalDivider()
+                            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
+                                if (screen is Screen.Channel) {
+                                    androidx.compose.runtime.key(screen.stableKey()) {
+                                        // 1 行が長くなりすぎないよう、読みやすい幅に抑える
+                                        Box(Modifier.widthIn(max = CHANNEL_MAX_WIDTH).fillMaxSize().testTag(TestTags.SCREEN_CHANNEL)) {
+                                            ChannelScreen(screen.channelId, screen.messageId)
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        "チャンネルを選んでください",
+                                        Modifier.align(Alignment.Center).testTag(TestTags.TWO_PANE_EMPTY),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // 画面ごとに状態 (スクロール位置など) を保つため、キーを付けて描く
+                        androidx.compose.runtime.key(screen.stableKey()) {
+                            Box(Modifier.fillMaxSize().testTag(screen.testTag())) {
+                                when (screen) {
+                                    Screen.Home -> HomeScreen(loading = !p.ready)
+                                    is Screen.Channel -> ChannelScreen(screen.channelId, screen.messageId)
+                                    is Screen.ChannelSettings -> ChannelSettingsScreen(screen.channelId)
+                                    Screen.Inbox -> InboxScreen()
+                                    is Screen.Search -> SearchScreen(screen.channelId, screen.userId)
+                                    Screen.Members -> MembersScreen()
+                                    Screen.ChannelBrowser -> ChannelBrowserScreen()
+                                    Screen.Settings -> SettingsScreen()
+                                    Screen.ManageServer -> ManageServerScreen()
+                                }
+                            }
                         }
                     }
                 }
@@ -160,6 +194,10 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
         }
     }
 }
+
+private val TWO_PANE_MIN_WIDTH = 600.dp
+private val HOME_PANE_WIDTH = 340.dp
+private val CHANNEL_MAX_WIDTH = 840.dp
 
 private fun Screen.testTag(): String = when (this) {
     Screen.Home -> TestTags.SCREEN_HOME

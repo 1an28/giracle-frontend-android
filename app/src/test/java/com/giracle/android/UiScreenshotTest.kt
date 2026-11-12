@@ -33,6 +33,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -188,6 +189,23 @@ class UiScreenshotTest {
         waitTag(TestTags.expandLongText(long)); shot("08_long_text")
         click(TestTags.expandLongText(long))
         waitTag(TestTags.LONG_TEXT_DIALOG); shot("09_long_text_open")
+    }
+
+    /** 幅の広い画面では、ホームとチャンネルを左右に並べる (#29) */
+    @Test @Config(qualifiers = "w1024dp-h768dp-mdpi") fun tabletTwoPane() {
+        assumeTrue(server != null)
+        val ch = newChannel("tablet")
+        val msg = send(ch, "タブレットの 2 ペイン表示の確認")
+
+        startApp()
+        waitTag(TestTags.TWO_PANE_EMPTY)
+        waitTag(TestTags.homeChannel(ch)); shot("10_tablet_home")
+        click(TestTags.homeChannel(ch))
+        waitTag(TestTags.message(msg))
+        // チャンネルを開いても、左のホームは出たまま
+        assertTrue(exists(hasTestTag(TestTags.SCREEN_HOME)))
+        shot("11_tablet_channel")
+        back(TestTags.TWO_PANE_EMPTY)
     }
 
     @Test fun login() {

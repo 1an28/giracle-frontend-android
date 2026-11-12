@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +84,12 @@ import com.giracle.android.ui.common.humanSize
 import com.giracle.android.ui.common.rememberUser
 import com.giracle.android.ui.common.toast
 import com.giracle.android.ui.common.uploadFileFrom
+import com.giracle.android.data.ImageShrinker
+import com.giracle.android.data.Outbox
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import com.giracle.android.ui.common.userMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -98,6 +105,8 @@ class Attachment(val uri: Uri, val name: String, val size: Long) {
     var progress by mutableStateOf(0f)
     var fileId by mutableStateOf<String?>(null)
     var error by mutableStateOf<String?>(null)
+    /** 電波が無くて失敗した (つながったら自動でやり直す。#36) */
+    var waitingNetwork by mutableStateOf(false)
     var job: Job? = null
 }
 
@@ -192,12 +201,39 @@ fun Composer(
     fun upload(a: Attachment) {
         a.job = scope.launch {
             try {
-                val base = ctx.uploadFileFrom(a.uri)
+                var base = ctx.uploadFileFrom(a.uri)
+                // 写真は送る前に縮める (#28、D-025)。縮めた方が小さいときだけ差し替える
+                if (graph.prefs.settings.value.shrinkImages && ImageShrinker.isTarget(base.mime)) {
+                    val shrunk = withContext(Dispatchers.Default) { ImageShrinker.shrink(ctx.contentResolver, a.uri, base.mime, a.size) }
+                    if (shrunk != null) base = UploadFile(ImageShrinker.jpegName(base.name), "image/jpeg", shrunk.bytes.toRequestBody("image/jpeg".toMediaType()))
+                }
+                if (base.body.contentLength() >= server.messageMaxFileSize) {
+                    a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
+                    return@launch
+                }
                 val counting = UploadFile(base.name, base.mime, ProgressBody(base.body) { a.progress = it })
                 a.fileId = graph.api.uploadFile(channelId, counting)
                 a.progress = 1f
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                a.error = e.userMessage()
+                if (Outbox.isNetworkFailure(e)) {
+                    a.waitingNetwork = true
+                    a.error = "つながったら自動でやり直します"
+                } else a.error = e.userMessage()
+            }
+        }
+    }
+    // 電波が無くて失敗した添付は、つながったら (WebSocket の接続) やり直す (#36)
+    LaunchedEffect(attachments) {
+        graph.ws.state.collect { st ->
+            if (st == com.giracle.android.data.net.WsClient.State.Connected) {
+                attachments.filter { it.waitingNetwork }.forEach { a ->
+                    a.waitingNetwork = false
+                    a.error = null
+                    a.progress = 0f
+                    upload(a)
+                }
             }
         }
     }
@@ -207,7 +243,9 @@ fun Composer(
             val size = ctx.fileSizeOf(u)
             val f = ctx.uploadFileFrom(u)
             val a = Attachment(u, f.name, size)
-            if (size >= 0 && size >= server.messageMaxFileSize) a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
+            // 縮める写真は、縮めた後の大きさで上限を確かめる (upload の中)
+            val willShrink = settings.shrinkImages && ImageShrinker.isTarget(f.mime)
+            if (!willShrink && size >= 0 && size >= server.messageMaxFileSize) a.error = "ファイルが大きすぎます (上限 ${humanSize(server.messageMaxFileSize)})"
             else if (!com.giracle.android.ui.common.isUploadable(f.mime)) a.error = "この形式 (${f.mime}) はサーバーが受け付けません"
             attachments += a
             if (a.error == null) upload(a)
@@ -230,7 +268,8 @@ fun Composer(
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { addUris(it) }
     var attachMenu by remember { mutableStateOf(false) }
 
-    val uploading = attachments.any { it.fileId == null && it.error == null }
+    // 電波待ちの添付があるときも送らせない (添付が抜けたまま送られないように。外せば送れる)
+    val uploading = attachments.any { (it.fileId == null && it.error == null) || it.waitingNetwork }
     val text = state.text.toString()
     val tooLong = text.length > server.messageMaxLength
     val canSend = !sending && !uploading && !tooLong && (text.isNotBlank() || attachments.any { it.fileId != null })
@@ -265,9 +304,16 @@ fun Composer(
                 com.giracle.android.ui.ChannelShortcuts.reportSent(ctx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
                 Drafts.remove(ctx, channelId)
             } catch (e: Exception) {
-                state.setTextAndPlaceCursorAtEnd(keep)
-                attachments.addAll(keepAttach)
-                ctx.toast("送信できませんでした: ${e.userMessage()}")
+                if (Outbox.isNetworkFailure(e)) {
+                    // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
+                    graph.outbox.add(channelId, body, ids, reply)
+                    Drafts.remove(ctx, channelId)
+                    ctx.toast("送信待ちにしました。つながったら送ります")
+                } else {
+                    state.setTextAndPlaceCursorAtEnd(keep)
+                    attachments.addAll(keepAttach)
+                    ctx.toast("送信できませんでした: ${e.userMessage()}")
+                }
             } finally { sending = false }
         }
     }
@@ -285,6 +331,7 @@ fun Composer(
                 }
                 HorizontalDivider()
             }
+            OutboxBar(channelId)
             if (editing != null) Banner(Icons.Default.Edit, "メッセージを編集中", onCancelEdit)
             replyTo?.let { r ->
                 val u = rememberUser(r.userId)
@@ -407,5 +454,36 @@ private class ProgressBody(private val inner: okhttp3.RequestBody, private val o
         }.buffer()
         inner.writeTo(fs)
         fs.flush()
+    }
+}
+
+/** このチャンネルの送信待ち (#30)。電波が戻ったら自動で送る。断られたものは理由を出す */
+@Composable
+private fun OutboxBar(channelId: String) {
+    val graph = LocalGraph.current
+    val all by graph.outbox.items.collectAsStateWithLifecycle()
+    val items = remember(all, channelId) { all.filter { it.channelId == channelId } }
+    if (items.isEmpty()) return
+    Column(Modifier.fillMaxWidth().testTag(TestTags.COMPOSER_OUTBOX)) {
+        for (item in items) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (item.error == null) "送信待ち" else "送れませんでした: ${item.error}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (item.error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        item.text.replace('\n', ' ').ifBlank { "(添付ファイル ${item.fileIds.size} 件)" },
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+                TextButton(onClick = { graph.flushOutbox(item.localId) }) { Text("今すぐ送る") }
+                TextButton(onClick = { graph.outbox.remove(item.localId) }) { Text("取り消す") }
+            }
+        }
+        HorizontalDivider()
     }
 }

@@ -6,7 +6,9 @@ import com.giracle.android.GiracleApp
 import com.giracle.android.data.InAppNotice
 import com.giracle.android.data.model.PushPayload
 import com.giracle.android.data.net.AppJson
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.PushService
 import org.unifiedpush.android.connector.data.PushEndpoint
@@ -52,7 +54,31 @@ class PushServiceImpl : PushService() {
         Log.i(TAG, "post notification (canPost=${Notifier.canPost(this)})")
         // 題は「<名前> さんからのメンション」の形 (giracle-backend の SendMessageNotifications.ts)。名前を取り出して会話の形にする
         val sender = SENDER.find(p.title)?.groupValues?.get(1)
-        Notifier.post(this, InAppNotice(p.title, graph.store.plainText(p.body), p.data?.channelId, p.data?.messageId, sender = sender), tag = p.data?.messageId ?: p.tag)
+        val g = graph
+        val ctx = applicationContext
+        g.scope.launch {
+            // プッシュの中身には送信者の ID が無い (S-7) ので、メッセージを取って調べる。
+            // 間に合わなければ名前だけで出す (通知を遅らせすぎない。#26)
+            val chId = p.data?.channelId
+            // 2 つの問い合わせは並べて行い、合わせて LOOKUP_TIMEOUT_MS までしか待たない
+            val senderReq = async {
+                p.data?.messageId?.let { id -> runCatching { g.api.message(id).userId }.getOrNull() }
+            }
+            val chReq = async {
+                chId?.let { id ->
+                    g.store.channels.value.firstOrNull { it.id == id }?.name
+                        ?: runCatching { g.api.channelInfo(id).name }.getOrNull()
+                }
+            }
+            withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { senderReq.join(); chReq.join() }
+            val senderId = if (senderReq.isCompleted) senderReq.await() else null.also { senderReq.cancel() }
+            val chName = if (chReq.isCompleted) chReq.await() else null.also { chReq.cancel() }
+            Notifier.post(
+                ctx,
+                InAppNotice(p.title, g.store.plainText(p.body), chId, p.data?.messageId, sender = sender, senderId = senderId, channelName = chName),
+                tag = p.data?.messageId ?: p.tag,
+            )
+        }
     }
 
     override fun onRegistrationFailed(reason: FailedReason, instance: String) {
@@ -71,5 +97,6 @@ class PushServiceImpl : PushService() {
     private companion object {
         const val TAG = "GiraclePush"
         val SENDER = Regex("^(.+) さんからの")
+        const val LOOKUP_TIMEOUT_MS = 3000L
     }
 }
