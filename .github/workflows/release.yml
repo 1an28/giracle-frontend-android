@@ -38,6 +38,24 @@ jobs:
             echo "::error::タグ ($TAG) と app/build.gradle.kts の versionName (v$VERSION) が一致しません"; exit 1
           fi
 
+      # 起動を速くする Baseline Profile を、エミュレータで実際に操作して記録し直す (#8、D-021)。
+      # 失敗しても、リポジトリにある Baseline Profile のままリリースする (記録はリリースを止めない)
+      - name: Build APKs for recording the Baseline Profile
+        id: bpbuild
+        continue-on-error: true
+        run: ./gradlew :app:assembleNonMinifiedRelease :baselineprofile:assembleDebug
+      - uses: ./.github/actions/local-server
+        if: steps.bpbuild.outcome == 'success'
+        continue-on-error: true
+      - name: Record Baseline Profile
+        if: steps.bpbuild.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 30
+        run: |
+          .github/scripts/emulator-start.sh
+          .github/scripts/baseline-profile.sh generate app/build/outputs/apk/nonMinifiedRelease/app-nonMinifiedRelease.apk \
+            || git checkout app/src/main/baseline-prof.txt
+
       # 署名鍵が Secrets にあれば CI でビルド・署名する。無ければ、リポジトリに置いた署名済み APK を使う
       - name: Build signed APK (Secrets)
         id: ci
