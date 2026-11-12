@@ -39,7 +39,7 @@ data class ClientSettings(
  * SharedPreferences ベースの保存先。
  * 起動を速くするため、DataStore ではなく同期読み出しできる SharedPreferences を使う (値は少量)。
  */
-class Prefs(context: Context, name: String = "giracle") : TokenStore {
+class Prefs(context: Context, name: String = "giracle", private val cipher: TokenCipher = KeystoreTokenCipher()) : TokenStore {
     private val sp: SharedPreferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     var serverUrl: String?
@@ -50,15 +50,55 @@ class Prefs(context: Context, name: String = "giracle") : TokenStore {
         get() = sp.getBoolean(K_DIRECT, false)
         set(v) = sp.edit().putBoolean(K_DIRECT, v).apply()
 
-    @Volatile private var tokenCache: String? = sp.getString(K_TOKEN, null)
+    // トークンは端末の鍵で暗号化して保存する (#27、D-027)。復号は最初に使うときまで遅らせる
+    // (起動直後の画面を出すには「保存されているか」だけ分かればよく、復号は最初の通信の前、裏のスレッドで済む)
+    private val tokenLock = Any()
+    @Volatile private var tokenLoaded = false
+    @Volatile private var tokenCache: String? = null
+
+    /** トークンが保存されているか (復号はしない) */
+    val hasToken: Boolean
+        get() = if (tokenLoaded) tokenCache != null else sp.contains(K_TOKEN_ENC) || sp.contains(K_TOKEN)
+
+    private fun loadToken(): String? = synchronized(tokenLock) {
+        if (tokenLoaded) return tokenCache
+        val enc = sp.getString(K_TOKEN_ENC, null)
+        val plain = sp.getString(K_TOKEN, null)
+        val v = when {
+            // 復号できない (端末の鍵が消えた) ときは、ログインし直してもらう
+            enc != null -> cipher.decrypt(enc) ?: null.also { sp.edit().remove(K_TOKEN_ENC).apply() }
+            plain != null -> {
+                // 以前の版が平文で保存したものは、暗号化して置き換える (端末の鍵が使えなければ平文のまま)
+                cipher.encrypt(plain)?.let { sp.edit().putString(K_TOKEN_ENC, it).remove(K_TOKEN).apply() }
+                plain
+            }
+            else -> null
+        }
+        tokenCache = v
+        tokenLoaded = true
+        v
+    }
 
     override var token: String?
-        get() = tokenCache
+        get() = if (tokenLoaded) tokenCache else loadToken()
         set(v) {
-            if (v == tokenCache) return
-            tokenCache = v
-            sp.edit().putString(K_TOKEN, v).apply()
+            synchronized(tokenLock) { setTokenLocked(v) }
         }
+
+    private fun setTokenLocked(v: String?) {
+        if (tokenLoaded && v == tokenCache) return
+        tokenCache = v
+        tokenLoaded = true
+        val e = sp.edit()
+        if (v == null) e.remove(K_TOKEN_ENC).remove(K_TOKEN)
+        else {
+            val enc = cipher.encrypt(v)
+            if (enc != null) e.putString(K_TOKEN_ENC, enc).remove(K_TOKEN)
+            // 端末の鍵が使えないとき (JVM のテストなど) は平文で保存する
+            else e.putString(K_TOKEN, v).remove(K_TOKEN_ENC)
+        }
+        e.apply()
+    }
 
     var userId: String?
         get() = sp.getString(K_USER, null)
@@ -103,14 +143,18 @@ class Prefs(context: Context, name: String = "giracle") : TokenStore {
     }
 
     fun clearSession() {
-        tokenCache = null
-        sp.edit().remove(K_TOKEN).remove(K_USER).remove(K_LAST_CHANNEL).apply()
+        synchronized(tokenLock) {
+            tokenCache = null
+            tokenLoaded = true
+        }
+        sp.edit().remove(K_TOKEN).remove(K_TOKEN_ENC).remove(K_USER).remove(K_LAST_CHANNEL).apply()
     }
 
     private companion object {
         const val K_SERVER = "serverUrl"
         const val K_DIRECT = "directBackend"
         const val K_TOKEN = "token"
+        const val K_TOKEN_ENC = "tokenEnc"
         const val K_USER = "userId"
         const val K_LAST_CHANNEL = "lastChannel"
         const val K_ORDER = "channelOrder"

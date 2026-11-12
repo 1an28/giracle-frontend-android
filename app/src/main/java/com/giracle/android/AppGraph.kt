@@ -74,9 +74,8 @@ class AppGraph(context: Context) {
     @Volatile private var sessionLoadStarted = false
 
     init {
-        val token = prefs.token
         val uid = prefs.userId
-        if (token != null && uid != null && prefs.serverUrl != null) {
+        if (prefs.hasToken && uid != null && prefs.serverUrl != null) {
             // 保存済みセッションで即座にメイン画面へ (確認は裏で行う)
             _phase.value = AppPhase.SignedIn(uid, ready = false)
             // 前回の内容を先に出す。サーバーの最新への置き換えは、画面を開いたときか常時接続のときに始める
