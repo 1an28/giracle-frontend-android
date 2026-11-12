@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 吹き出しの中に稲妻: 「速い Giracle」 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="@color/ic_fg"
+        android:pathData="M34,32h40a8,8 0,0 1,8 8v24a8,8 0,0 1,-8 8H50l-12,10v-10h-4a8,8 0,0 1,-8 -8V40a8,8 0,0 1,8 -8z" />
+    <path android:fillColor="@color/ic_bg"
+        android:pathData="M58,37l-14,21h9l-4,13l15,-22h-9z" />
+</vector>

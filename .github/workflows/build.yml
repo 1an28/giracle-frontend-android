@@ -1,0 +1,29 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      # ランナーに入っている Android SDK を使う。足りないものだけ入れる
+      # (android-actions/setup-android は廃止済みの "tools" を入れようとして失敗するため使わない)
+      - name: Install SDK packages
+        run: .github/scripts/sdk-install.sh
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest
+      - name: Build APK
+        run: ./gradlew :app:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giracle-native-apk
+          path: app/build/outputs/apk/release/*.apk

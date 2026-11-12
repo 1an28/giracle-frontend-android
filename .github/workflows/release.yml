@@ -1,0 +1,86 @@
+name: release
+
+# v0.1.0 のようなタグを push すると、GitHub のリリースを作って APK を添付する。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "リリースするタグ (例: v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install SDK packages
+        run: .github/scripts/sdk-install.sh
+
+      - name: Check version
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::error::タグ ($TAG) と app/build.gradle.kts の versionName (v$VERSION) が一致しません"; exit 1
+          fi
+
+      # 署名鍵が Secrets にあれば CI でビルド・署名する。無ければ、リポジトリに置いた署名済み APK を使う
+      - name: Build signed APK (Secrets)
+        id: ci
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          mkdir -p keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > keystore/giracle-native.p12
+          printf 'storeFile=keystore/giracle-native.p12\nstorePassword=%s\nkeyAlias=giracle\nkeyPassword=%s\n' "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > keystore.properties
+          ./gradlew :app:assembleRelease
+          mkdir -p out && cp app/build/outputs/apk/release/app-release.apk "out/giracle-native-$TAG.apk"
+          rm -f keystore.properties keystore/giracle-native.p12
+          echo "built=1" >> "$GITHUB_OUTPUT"
+      - name: Use prebuilt APK
+        if: steps.ci.outputs.built != '1'
+        run: |
+          SRC="releases/giracle-native-$TAG.apk"
+          if [ ! -f "$SRC" ]; then
+            echo "::error::Secrets (KEYSTORE_BASE64 / KEYSTORE_PASSWORD) が無く、$SRC もありません"; exit 1
+          fi
+          mkdir -p out && cp "$SRC" out/
+
+      # 前の版に上書きインストールできるよう、決まった鍵で署名されていることを確かめる
+      - name: Verify signing certificate
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          ACTUAL=$("$APKSIGNER" verify --print-certs out/*.apk | grep -m1 'SHA-256 digest' | awk '{print $NF}')
+          EXPECTED=$(tr -d '[:space:]' < releases/SIGNING_CERT_SHA256)
+          echo "certificate: $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::署名の証明書が登録済みのもの ($EXPECTED) と違います"; exit 1
+          fi
+          (cd out && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Android 8.0 以上。APK をスマホでダウンロードして開くとインストールできます (README の「入れ方」参照)。
+          署名証明書 SHA-256: $(cat releases/SIGNING_CERT_SHA256)"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --title "Giracle Native $TAG" --notes "$NOTES"
+          fi

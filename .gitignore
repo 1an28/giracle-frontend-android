@@ -33,3 +33,12 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# 署名関連 (公開リポジトリのため絶対にコミットしない)
+keystore.properties
+keystore/
+*.p12
+dist/
+
+# リリース用に署名済み APK だけは置く (releases/README.md 参照)
+!releases/*.apk

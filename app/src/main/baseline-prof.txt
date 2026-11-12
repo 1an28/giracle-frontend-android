@@ -1,0 +1,6 @@
+# アプリ本体の Baseline Profile (インストール時に事前コンパイルさせる範囲)。
+# 実機の Macrobenchmark で記録したものではなく、このアプリのコード全体を「起動時・よく使う」と宣言する
+# ワイルドカード規則。コード量が小さいため全体を対象にしても APK/インストール時間への影響は小さい。
+# (Compose・OkHttp などのライブラリは各自の Baseline Profile を同梱している)
+HSPLcom/giracle/android/**->**(**)**
+Lcom/giracle/android/**;
