@@ -45,7 +45,8 @@ import kotlinx.coroutines.launch
 object Notifier {
     const val CH_MESSAGES = "messages"
     const val CH_CONNECTION = "connection"
-    private var nextId = 1000
+    // プッシュと WebSocket の両方から同時に呼ばれるので、番号はスレッドをまたいで重ならないようにする
+    private val nextId = java.util.concurrent.atomic.AtomicInteger(1000)
 
     fun init(context: Context, graph: AppGraph) {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -114,7 +115,7 @@ object Notifier {
             putExtra(MainActivity.EXTRA_CHANNEL, n.channelId)
             putExtra(MainActivity.EXTRA_MESSAGE, n.messageId)
         }
-        val id = nextId++
+        val id = nextId.getAndIncrement()
         val pi = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val ch = n.channelId
         val notifTag: String
