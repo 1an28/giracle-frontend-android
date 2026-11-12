@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      # 記録した Baseline Profile を配布版に入れるか (D-021)。エミュレータの計測で、今のワイルドカード規則より速いと
+      # 確かめられていないので、確かめられるまで "false" (リポジトリにある Baseline Profile のまま出す)
+      USE_RECORDED_BASELINE_PROFILE: "false"
       HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       # タグの push ならそのタグを、手動実行なら実行したブランチの最新を使う
@@ -45,6 +48,7 @@ jobs:
       # 無ければここで記録する。どちらも失敗したら、リポジトリにある Baseline Profile のままリリースする
       - name: Use Baseline Profile recorded on main
         id: bpreuse
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,14 +60,14 @@ jobs:
           echo "run $RUN の記録を使う (rules: $(grep -vc '^#' app/src/main/baseline-prof.txt))"
       - name: Build APKs for recording the Baseline Profile
         id: bpbuild
-        if: steps.bpreuse.outcome != 'success'
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true' && steps.bpreuse.outcome != 'success'
         continue-on-error: true
         run: ./gradlew :app:assembleNonMinifiedRelease :baselineprofile:assembleDebug
       - uses: ./.github/actions/local-server
-        if: steps.bpreuse.outcome != 'success' && steps.bpbuild.outcome == 'success'
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true' && steps.bpreuse.outcome != 'success' && steps.bpbuild.outcome == 'success'
         continue-on-error: true
       - name: Record Baseline Profile
-        if: steps.bpreuse.outcome != 'success' && steps.bpbuild.outcome == 'success'
+        if: env.USE_RECORDED_BASELINE_PROFILE == 'true' && steps.bpreuse.outcome != 'success' && steps.bpbuild.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 30
         run: |
