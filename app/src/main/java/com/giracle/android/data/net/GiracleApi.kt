@@ -266,6 +266,17 @@ class GiracleApi(private val client: OkHttpClient, @Volatile var endpoint: Endpo
     suspend fun updateNotificationConfig(enabled: Boolean?, mode: String?): NotificationConfig =
         call("POST", "notification/config", obj("enabled" to enabled, "mode" to mode))
 
+    /** Web Push 用の VAPID 公開鍵。サーバーで未設定なら 503 */
+    suspend fun vapidPublicKey(): String = call<VapidKey>("GET", "notification/vapid-public-key").publicKey
+
+    /** プッシュ通知の端末登録。UnifiedPush の宛先は Web Push と同じ形式なので platform は "web" */
+    suspend fun deviceRegister(endpoint: String, p256dh: String, auth: String, deviceName: String) = callUnit(
+        "POST", "notification/device/register",
+        obj("token" to endpoint, "platform" to "web", "keys" to obj("p256dh" to p256dh, "auth" to auth), "deviceName" to deviceName),
+    )
+
+    suspend fun deviceUnregister(endpoint: String) = callUnit("POST", "notification/device/unregister", obj("token" to endpoint))
+
     suspend fun mutedChannels(): List<MutedChannel> = call("GET", "notification/muted-channels")
     suspend fun muteChannel(channelId: String) = callUnit("POST", "notification/mute-channel", obj("channelId" to channelId))
     suspend fun unmuteChannel(channelId: String) = callUnit("POST", "notification/unmute-channel", obj("channelId" to channelId))

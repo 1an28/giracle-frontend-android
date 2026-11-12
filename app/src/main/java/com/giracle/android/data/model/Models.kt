@@ -252,3 +252,18 @@ data class SystemMessageBody(val targetUserId: String = "", val messageTerm: Str
 /** WebSocket の受信フレーム */
 @Serializable
 data class WsFrame(val signal: String, val data: kotlinx.serialization.json.JsonElement? = null)
+
+@Serializable
+data class VapidKey(val publicKey: String)
+
+/** サーバーが Web Push で送る通知の中身 (giracle-backend の PushPayload) */
+@Serializable
+data class PushPayload(
+    val title: String = "",
+    val body: String = "",
+    val tag: String? = null,
+    val data: PushData? = null,
+)
+
+@Serializable
+data class PushData(val channelId: String? = null, val messageId: String? = null)

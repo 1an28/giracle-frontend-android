@@ -66,6 +66,11 @@ class Prefs(context: Context, name: String = "giracle") : TokenStore {
         get() = sp.getString(K_LAST_CHANNEL, null)
         set(v) = sp.edit().putString(K_LAST_CHANNEL, v).apply()
 
+    /** UnifiedPush で登録した宛先 URL (解除時に使う) */
+    var pushEndpoint: String?
+        get() = sp.getString("pushEndpoint", null)
+        set(v) = sp.edit().putString("pushEndpoint", v).apply()
+
     /** チャンネル一覧の並び順 (ユーザーが並べ替えたもの) */
     var channelOrder: List<String>
         get() = sp.getString(K_ORDER, null)?.split(',')?.filter { it.isNotEmpty() } ?: emptyList()

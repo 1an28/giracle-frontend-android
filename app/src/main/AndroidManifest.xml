@@ -27,6 +27,15 @@
             </intent-filter>
         </activity>
 
+        <!-- UnifiedPush でのプッシュ通知受信 -->
+        <service
+            android:name=".notify.PushServiceImpl"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- 設定で「バックグラウンドでも接続を保つ」を ON にしたときだけ動く -->
         <service
             android:name=".notify.ConnectionService"

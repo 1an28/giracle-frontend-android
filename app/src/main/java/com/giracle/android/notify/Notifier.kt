@@ -51,7 +51,7 @@ object Notifier {
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun post(context: Context, n: InAppNotice) {
+    fun post(context: Context, n: InAppNotice, tag: String? = null) {
         if (!canPost(context)) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -71,7 +71,8 @@ object Notifier {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .build()
         try {
-            NotificationManagerCompat.from(context).notify(id, notif)
+            // 同じメッセージの通知 (WS とプッシュの両方から来た場合など) は tag で 1 つにまとめる
+            NotificationManagerCompat.from(context).notify(tag ?: n.messageId ?: id.toString(), 0, notif)
         } catch (_: SecurityException) {
         }
     }

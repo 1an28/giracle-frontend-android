@@ -12,6 +12,7 @@ coil = "3.6.3"
 profileinstaller = "1.4.1"
 junit = "4.13.2"
 robolectric = "4.17"
+unifiedpush = "3.3.5"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,7 @@ coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version
 coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+unifiedpush-connector = { module = "org.unifiedpush.android:connector", version.ref = "unifiedpush" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
