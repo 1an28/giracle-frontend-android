@@ -26,7 +26,9 @@ fi
 
 t0=$(date +%s)
 yes | "$SDKM" --licenses > /dev/null || true
-"$SDKM" "emulator" "platform-tools" "$IMAGE" > /dev/null
+# 入れるときにもライセンスの同意を尋ねることがあるので、yes を渡す (渡さないと入力待ちで止まる)
+yes | timeout 600 "$SDKM" "emulator" "platform-tools" "$IMAGE" > "$HOME/sdkmanager.log" 2>&1 \
+  || { tail -n 30 "$HOME/sdkmanager.log" >&2; exit 1; }
 echo "sdk packages: $(( $(date +%s) - t0 ))s"
 "$SDK/emulator/emulator" -accel-check || true
 
@@ -37,7 +39,7 @@ nohup "$SDK/emulator/emulator" -avd ci -no-window -no-audio -no-boot-anim -no-sn
   -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 \
   > "$HOME/emulator.log" 2>&1 &
 ADB="$SDK/platform-tools/adb"
-"$ADB" wait-for-device
+timeout 180 "$ADB" wait-for-device || { echo "adb does not see the emulator" >&2; tail -n 50 "$HOME/emulator.log" >&2; exit 1; }
 for _ in $(seq 300); do
   if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then break; fi
   sleep 1
