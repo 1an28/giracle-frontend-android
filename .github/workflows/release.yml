@@ -1,6 +1,8 @@
 name: release
 
 # v0.1.0 のようなタグを push すると、GitHub のリリースを作って APK を添付する。
+# タグを push できない場合は、Actions 画面からこのワークフローを手動実行してもよい
+# (実行したブランチの最新コミットにタグを付けてリリースする)。
 on:
   push:
     tags: ["v*"]
@@ -20,9 +22,8 @@ jobs:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
       HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
+      # タグの push ならそのタグを、手動実行なら実行したブランチの最新を使う
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ env.TAG }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -82,5 +83,6 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" out/* --clobber
           else
-            gh release create "$TAG" out/* --title "Giracle Native $TAG" --notes "$NOTES"
+            # タグが無ければ、このコミットに付けて作る
+            gh release create "$TAG" out/* --target "$GITHUB_SHA" --title "Giracle Native $TAG" --notes "$NOTES"
           fi
