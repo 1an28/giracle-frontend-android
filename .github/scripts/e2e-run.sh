@@ -41,6 +41,12 @@ show_clues() {
   grep -E "GiracleE2E|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
   echo "::endgroup::"
   echo "::group::crash バッファ"; cat "$OUT/crash.txt"; echo "::endgroup::"
+  # 終了時点の画面の要素 (resource-id・文字・クラス) の一覧
+  echo "::group::画面の要素 (uiautomator dump)"
+  "$ADB" shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1
+  "$ADB" shell cat /sdcard/ui.xml > "$OUT/ui.xml" 2>&1
+  grep -o '<node [^>]*' "$OUT/ui.xml" | sed -E 's/.*text="([^"]*)" resource-id="([^"]*)" class="([^"]*)" package="([^"]*)".*/id=\2 class=\3 text=\1 pkg=\4/' | head -n 120
+  echo "::endgroup::"
 }
 # am instrument は失敗しても終了コードが 0 なので、出力で判断する
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
