@@ -54,6 +54,22 @@ GIRACLE_TEST_SERVER=http://localhost:3333 ./gradlew :app:testDebugUnitTest   # �
 - CI では `live-test.yml` が同じ手順でサーバーを立ててこれらを動かし、スクリーンショットを成果物 `screenshots` に残す。
 - Robolectric はプロキシ環境で自前のダウンロードに失敗するため、Gradle で取得してオフラインで動かす設定にしてある。
 
+## 配布版をエミュレータで確かめる (e2e)
+
+CI (`e2e.yml`) が、配布版 (`assembleRelease`、debug 鍵で署名) をエミュレータに入れ、ランナー上のサーバーにつないで
+UI Automator で外から操作する (D-018)。手元で動かす場合 (KVM のある Linux と Android SDK が必要):
+
+```bash
+./gradlew :app:assembleRelease :e2e:assembleDebug
+devtools/start-local-stack.sh   # 管理者 admin / password123 も作っておく (上の「テスト」参照)
+.github/scripts/emulator-start.sh
+.github/scripts/e2e-run.sh      # 結果は e2e-out/ (画面・logcat・crash バッファ)
+```
+
+- 手順は `e2e/src/main/java/com/giracle/e2e/ReleaseAppTest.kt`。要素は testTag (resource-id) で探すので、
+  `TestTags` の名前を変えるとここも直す必要がある。
+- 失敗したときは、CI のログに logcat の要点・crash バッファ・終了時点の画面の要素一覧が出る。
+
 ## プッシュ通知の確認 (サーバー側)
 
 ```bash

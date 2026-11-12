@@ -38,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import com.giracle.android.ui.common.TestTags
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -87,8 +89,8 @@ fun SettingsScreen() {
 }
 
 @Composable
-fun SwitchRow(label: String, checked: Boolean, description: String? = null, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+fun SwitchRow(label: String, checked: Boolean, description: String? = null, tag: String? = null, onChange: (Boolean) -> Unit) {
+    Row(Modifier.then(if (tag != null) Modifier.testTag(tag) else Modifier), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label)
             description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -216,6 +218,7 @@ private fun ColumnScope.NotificationTab() {
         "バックグラウンドでも接続を保つ", s.keepConnection,
         "アプリを閉じても通知を受け取れるよう、常駐して接続を保ちます。電池を多めに使います。" +
             "(サーバーがアプリ向けのプッシュ通知に対応すれば不要になります)",
+        tag = TestTags.SETTINGS_KEEP_CONNECTION,
     ) { v -> graph.prefs.updateSettings { it.copy(keepConnection = v) } }
     HorizontalDivider()
     PushSection()

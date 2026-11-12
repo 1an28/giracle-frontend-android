@@ -9,8 +9,9 @@
   API の正確な仕様は backend の `src/components/*/*.module.ts` を見る。
 - 本番サーバー (chat.girak.moe) には開発環境からつながらない。動作確認はローカルに立てたサーバーで行う
   (`devtools/start-local-stack.sh`、手順は docs/DEVELOPMENT.md)。
-- 実機もエミュレータも無い。確認は JVM 上のテスト (`LiveServerTest` / `UiScreenshotTest`) で行う。
-  配布版 (R8 適用後) が動くかは確かめられていない (#12)。
+- 開発環境には実機もエミュレータも無い。確認は JVM 上のテスト (`LiveServerTest` / `UiScreenshotTest`) と、
+  CI のエミュレータで配布版 (R8 適用後) を外から操作する確認 (`e2e.yml`、D-018) で行う。実機での操作感は未確認。
+- CI の成果物 (zip) はこの環境から取得できない。失敗の手がかりは CI のログに出すようにしてある。
 - 配布 APK は CI (release.yml) が Secrets の鍵で署名する。署名鍵はリポジトリに入れない。
   この環境からはタグを push できないので、リリースは release ワークフローの手動実行で出す。
 - applicationId は `io.github.u1an28.giracle.kotlin` (D-015)。変えると、入れてあるアプリに上書き更新できなくなる。

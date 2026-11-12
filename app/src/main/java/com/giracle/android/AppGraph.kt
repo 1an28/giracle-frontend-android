@@ -112,7 +112,10 @@ class AppGraph(context: Context) {
         val r = api.signIn(username, password)
         prefs.userId = r.userId
         _phase.value = AppPhase.SignedIn(r.userId, ready = false)
-        loadSession(r.userId)
+        // 読み込みはアプリの scope で行い、呼び出し元はその完了を待つだけにする。呼び出し元 (ログイン画面) は
+        // 上の行で画面から外れて scope が取り消されるため、そこで読み込むと途中で止まり
+        // 「サーバーから読み込めませんでした」になっていた (#12 で発見)。待つ側が取り消されても読み込みは続く。
+        scope.launch { loadSession(r.userId) }.join()
     }
 
     suspend fun signUp(username: String, password: String, invite: String?) {
@@ -127,6 +130,8 @@ class AppGraph(context: Context) {
         } catch (e: ApiException) {
             if (e.isUnauthorized) signOutLocal()
             else _phase.value = AppPhase.SignedIn(userId, ready = false, error = e.body.ifBlank { e.message })
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // 取り消しは失敗ではない
         } catch (e: Exception) {
             _phase.value = AppPhase.SignedIn(userId, ready = false, error = e.message ?: e.toString())
         }
