@@ -261,6 +261,8 @@ fun Composer(
         scope.launch {
             try {
                 store.send(channelId, body, ids, reply)
+                // 共有シート・ランチャーに、このチャンネルを直接の送り先として出す (#25)
+                com.giracle.android.ui.ChannelShortcuts.reportSent(ctx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
                 Drafts.remove(ctx, channelId)
             } catch (e: Exception) {
                 state.setTextAndPlaceCursorAtEnd(keep)

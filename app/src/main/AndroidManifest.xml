@@ -27,6 +27,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 最近送ったチャンネルを、共有シートの直接の送り先・ランチャーのショートカットにする (#25) -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
             <!-- 他のアプリの「共有」から、画像・ファイル・文章を受け取る (D-020) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

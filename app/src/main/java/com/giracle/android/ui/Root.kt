@@ -119,7 +119,8 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     // 共有を受け取ったら、送り先のチャンネルを選べるようホームに戻る (D-020)
     val share = PendingShare.content
     LaunchedEffect(share) {
-        if (share != null) nav.reset()
+        // 共有シートで直接チャンネルが選ばれた (#25) ときは、そのチャンネルを開くのでホームに戻らない
+        if (share != null && PendingShare.target == null) nav.reset()
     }
     // 通知から開かれたとき
     val pending = pendingOpen.value
