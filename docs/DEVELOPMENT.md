@@ -57,7 +57,7 @@ GIRACLE_TEST_SERVER=http://localhost:3333 ./gradlew :app:testDebugUnitTest   # �
 ## 配布版をエミュレータで確かめる (e2e)
 
 CI (`e2e.yml`) が、配布版 (`assembleRelease`、debug 鍵で署名) をエミュレータに入れ、ランナー上のサーバーにつないで
-UI Automator で外から操作する (D-017)。手元で動かす場合 (KVM のある Linux と Android SDK が必要):
+UI Automator で外から操作する (D-018)。手元で動かす場合 (KVM のある Linux と Android SDK が必要):
 
 ```bash
 ./gradlew :app:assembleRelease :e2e:assembleDebug
