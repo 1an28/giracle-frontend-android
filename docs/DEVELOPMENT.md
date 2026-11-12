@@ -22,6 +22,11 @@ keyAlias=giracle
 keyPassword=...
 ```
 
+## リリース
+
+`v0.1.0` のようなタグを push すると、GitHub Actions (`release.yml`) がリリースを作り APK を添付する。
+署名鍵の扱いと手順は [releases/README.md](../releases/README.md)。
+
 ## ローカルでの動作確認
 
 ```bash

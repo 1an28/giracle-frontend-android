@@ -11,7 +11,7 @@
 
 ## 入れ方
 
-1. 配布された `giracle-native-<版>.apk` をスマホにダウンロードする
+1. [リリース](https://github.com/1an28/giracle-frontend-android/releases/latest) から `giracle-native-<版>.apk` をスマホでダウンロードする
 2. ファイルを開き、「この提供元のアプリを許可」を求められたら、ダウンロードに使ったアプリ (Chrome やファイル) を許可する
 3. 「インストール」を押す (Play プロテクトの確認が出たら「インストールする」を選ぶ)
 4. アプリを開き、サーバーの URL (Web 版を開くときの URL。例 `https://chat.example.com`) を入れて「接続」→ ログイン
