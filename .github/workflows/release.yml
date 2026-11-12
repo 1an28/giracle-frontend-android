@@ -78,7 +78,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="Android 8.0 以上。APK をスマホでダウンロードして開くとインストールできます (README の「入れ方」参照)。
+          # releases/notes/<タグ>.md があれば、その版の案内として先頭に載せる
+          EXTRA=""
+          if [ -f "releases/notes/$TAG.md" ]; then EXTRA="$(cat "releases/notes/$TAG.md")
+
+          "; fi
+          NOTES="${EXTRA}Android 8.0 以上。APK をスマホでダウンロードして開くとインストールできます (README の「入れ方」参照)。
           署名証明書 SHA-256: $(cat releases/SIGNING_CERT_SHA256)"
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" out/* --clobber

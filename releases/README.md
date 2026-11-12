@@ -10,6 +10,7 @@ GitHub のリリースに添付する APK の置き場と、署名証明書の�
 ## リリースの出し方
 
 1. `app/build.gradle.kts` の `versionCode` を 1 増やし、`versionName` を新しい版にする
+   - 利用者に伝えることがあれば `releases/notes/vX.Y.Z.md` に書く (リリースノートの先頭に載る)
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`
    - または GitHub の Actions > release > Run workflow で、main を選び `vX.Y.Z` を入れて実行
      (main の最新コミットにタグが付く)
