@@ -35,6 +35,7 @@ class GiracleApp : Application(), SingletonImageLoader.Factory {
 
             override fun onStop(owner: LifecycleOwner) {
                 graph.store.appInForeground = false
+                graph.saveSnapshot()
                 // 常時接続が OFF なら、背面に回ったら切断して電池を節約する
                 if (!graph.prefs.settings.value.keepConnection) graph.ws.stop()
             }

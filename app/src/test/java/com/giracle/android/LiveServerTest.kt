@@ -147,6 +147,19 @@ class LiveServerTest {
         b.api.leaveChannel(ch)
         eventually { if (b.store.me.value!!.channelJoin.none { it.channelId == ch }) true else null }
 
+        // 起動高速化用スナップショット: 保存→読み込みで履歴と名前が復元される
+        val snap = a.store.snapshot()!!
+        val json = com.giracle.android.data.net.AppJson.encodeToString(com.giracle.android.data.Snapshot.serializer(), snap)
+        val a2 = client("a2"); a2.prefs.token = a.prefs.token
+        val restored = a2.store
+        restored.restore(com.giracle.android.data.net.AppJson.decodeFromString(com.giracle.android.data.Snapshot.serializer(), json))
+        val h = restored.history(ch).value
+        assertTrue(h.loaded && h.fromCache && h.messages.isNotEmpty())
+        assertTrue(restored.users.value.containsKey(aId) || restored.me.value?.id == aId)
+        // 開くとサーバーから取り直し、fromCache が外れる
+        restored.openChannel(ch)
+        assertTrue(!restored.history(ch).value.fromCache)
+
         // 後片付け (未読の通知が残っているとチャンネル削除がサーバー側で失敗するため先に消す。docs/SERVER_CHANGES.md 参照)
         a.store.clearInbox(); b.store.clearInbox()
         admin.api.deleteChannel(ch)

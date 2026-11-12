@@ -51,6 +51,11 @@ android {
         }
     }
 
+    // 同梱するライブラリの翻訳を日本語と英語だけにして APK を小さくする
+    androidResources {
+        localeFilters += listOf("ja", "en")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

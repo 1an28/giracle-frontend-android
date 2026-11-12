@@ -61,13 +61,38 @@ class AppGraph(context: Context) {
         if (token != null && uid != null && prefs.serverUrl != null) {
             // 保存済みセッションで即座にメイン画面へ (確認は裏で行う)
             _phase.value = AppPhase.SignedIn(uid, ready = false)
-            scope.launch { loadSession(uid) }
+            scope.launch {
+                // 前回の内容を先に出してから、サーバーの最新に置き換える
+                readSnapshot(uid)?.let { store.restore(it) }
+                loadSession(uid)
+            }
         } else {
             _phase.value = AppPhase.SignedOut
         }
         scope.launch {
             // 「セッション切れ」通知を監視 (ストアが作り直されたら付け替える)
             _store.collectLatest { s -> s.sessionExpired.collect { if (it) signOutLocal() } }
+        }
+    }
+
+    private val snapshotFile = java.io.File(appContext.filesDir, "snapshot.json")
+
+    private fun readSnapshot(userId: String): com.giracle.android.data.Snapshot? = runCatching {
+        if (!snapshotFile.exists()) return null
+        val s = com.giracle.android.data.net.AppJson.decodeFromString(com.giracle.android.data.Snapshot.serializer(), snapshotFile.readText())
+        // 別ユーザー・別サーバーのものは使わない
+        if (s.userId == userId && snapshotFile.parentFile != null && prefs.serverUrl != null) s else null
+    }.getOrNull()
+
+    /** アプリが背面に回ったときに呼ぶ。書き込みは裏で行い、途中で落ちても壊れないよう一時ファイル経由 */
+    fun saveSnapshot() {
+        val snap = store.snapshot() ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val tmp = java.io.File(snapshotFile.path + ".tmp")
+                tmp.writeText(com.giracle.android.data.net.AppJson.encodeToString(com.giracle.android.data.Snapshot.serializer(), snap))
+                tmp.renameTo(snapshotFile)
+            }
         }
     }
 
@@ -121,6 +146,7 @@ class AppGraph(context: Context) {
     private fun signOutLocal() {
         store.stop()
         prefs.clearSession()
+        snapshotFile.delete()
         // 状態を捨てて作り直す
         _store.value = ChatStore(api, ws, prefs, scope)
         _phase.value = AppPhase.SignedOut

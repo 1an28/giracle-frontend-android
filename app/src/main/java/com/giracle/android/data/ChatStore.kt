@@ -42,6 +42,26 @@ data class HistoryState(
     val loaded: Boolean = false,
     /** 変更の世代。スクロール位置の調整などに使う */
     val version: Int = 0,
+    /** 端末に保存していた前回の内容 (表示はするが、開いたらサーバーから取り直す) */
+    val fromCache: Boolean = false,
+)
+
+/** 起動を速くするため端末に保存する状態のスナップショット */
+@kotlinx.serialization.Serializable
+data class Snapshot(
+    val userId: String,
+    val me: User? = null,
+    val server: ServerConfig = ServerConfig(),
+    val channels: List<Channel> = emptyList(),
+    val users: List<User> = emptyList(),
+    val roles: List<Role> = emptyList(),
+    val customEmoji: List<CustomEmoji> = emptyList(),
+    val readTimes: Map<String, String> = emptyMap(),
+    val hasNew: Map<String, Boolean> = emptyMap(),
+    val inbox: List<InboxItem> = emptyList(),
+    val histories: Map<String, List<Message>> = emptyMap(),
+    val imageSizes: Map<String, ImageSize> = emptyMap(),
+    val muted: List<String> = emptyList(),
 )
 
 /** アプリ内通知 (画面上部のバナーや Android 通知に使う) */
@@ -176,6 +196,48 @@ class ChatStore(
         ).awaitAll()
     }
 
+    /** 保存用のスナップショット。履歴は各チャンネルの最新 [perChannel] 件だけ */
+    fun snapshot(perChannel: Int = 40): Snapshot? {
+        val u = me.value ?: return null
+        val hs = histories.mapNotNull { (id, f) ->
+            val v = f.value
+            if (v.loaded && v.atEnd && v.messages.isNotEmpty()) id to v.messages.take(perChannel) else null
+        }.toMap()
+        val needUsers = HashSet<String>().apply {
+            hs.values.forEach { l -> l.forEach { add(it.userId) } }
+            inbox.value.forEach { add(it.message.userId) }
+        }
+        val fileIds = hs.values.flatMap { l -> l.flatMap { m -> m.files.map { it.id } } }.toSet()
+        return Snapshot(
+            userId = u.id, me = u, server = serverConfig.value, channels = channels.value,
+            users = users.value.values.filter { it.id in needUsers },
+            roles = roles.value.values.toList(), customEmoji = customEmoji.value,
+            readTimes = readTimes.value, hasNew = hasNew.value, inbox = inbox.value.take(50),
+            histories = hs, imageSizes = imageSizes.value.filterKeys { it in fileIds },
+            muted = mutedChannels.value.toList(),
+        )
+    }
+
+    /** 前回のスナップショットを反映する (サーバーからの読み込みが終わる前の仮表示) */
+    fun restore(s: Snapshot) {
+        if (me.value != null) return
+        me.value = s.me
+        serverConfig.value = s.server
+        channels.value = s.channels
+        users.value = s.users.associateBy { it.id }
+        roles.value = s.roles.associateBy { it.id }
+        customEmoji.value = s.customEmoji
+        readTimes.value = s.readTimes
+        readTimesBefore.value = s.readTimes
+        hasNew.value = s.hasNew
+        inbox.value = s.inbox
+        imageSizes.value = s.imageSizes
+        mutedChannels.value = s.muted.toSet()
+        for ((id, msgs) in s.histories) {
+            hist(id).value = HistoryState(messages = msgs, atTop = false, atEnd = true, loaded = true, fromCache = true)
+        }
+    }
+
     fun stop() {
         ws.stop()
         wsJob?.cancel()
@@ -231,9 +293,9 @@ class ChatStore(
         currentChannelId = channelId
         readTimesBefore.update { it + (channelId to (readTimes.value[channelId] ?: "")) }
         val flow = hist(channelId)
-        if (flow.value.loaded) return
+        if (flow.value.loaded && !flow.value.fromCache) return
         lock(channelId).withLock {
-            if (flow.value.loaded) return
+            if (flow.value.loaded && !flow.value.fromCache) return
             val readTime = readTimes.value[channelId]
             val r = api.history(channelId, messageTimeFrom = readTime?.takeIf { it.isNotEmpty() }, fetchLength = 30, direction = "older")
             mergeSizes(r.imageDimensions)
