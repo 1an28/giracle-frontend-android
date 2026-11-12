@@ -36,7 +36,11 @@ if [ "$rc" != 0 ]; then tail -n 30 "$HOME/sdkmanager.log" >&2; exit 1; fi
 echo "sdk packages: $(( $(date +%s) - t0 ))s"
 "$SDK/emulator/emulator" -accel-check || true
 
-echo no | "$AVDM" create avd -n ci -k "$IMAGE" -d pixel_6 --force > /dev/null
+# avdmanager と emulator で AVD の置き場所の解釈がずれることがあるので、明示してそろえる
+export ANDROID_AVD_HOME="$HOME/.android/avd"
+mkdir -p "$ANDROID_AVD_HOME"
+echo no | "$AVDM" create avd -n ci -k "$IMAGE" -d pixel_6 --force
+"$SDK/emulator/emulator" -list-avds
 # 画面は 1080x2400 (pixel_6)。描画は CPU (swiftshader)、音声・カメラなし、毎回まっさらな状態から起動する
 t1=$(date +%s)
 nohup "$SDK/emulator/emulator" -avd ci -no-window -no-audio -no-boot-anim -no-snapshot \
