@@ -63,3 +63,5 @@ echo "boot: $(( $(date +%s) - t1 ))s"
 "$ADB" shell svc power stayon true
 "$ADB" shell input keyevent 82 || true
 "$ADB" devices
+# 後の手順から adb を使えるようにする
+if [ -n "${GITHUB_PATH:-}" ]; then echo "$SDK/platform-tools" >> "$GITHUB_PATH"; fi
