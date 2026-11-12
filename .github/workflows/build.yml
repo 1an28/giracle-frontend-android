@@ -10,8 +10,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -23,7 +23,7 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest
       - name: Build APK
         run: ./gradlew :app:assembleRelease
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: giracle-native-apk
           path: app/build/outputs/apk/release/*.apk
