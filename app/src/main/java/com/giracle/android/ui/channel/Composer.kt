@@ -117,10 +117,9 @@ class Attachment(val uri: Uri, val name: String, val size: Long) {
  */
 object Drafts {
     private val mem = HashMap<String, String>()
-    @Volatile private var sp: android.content.SharedPreferences? = null
-
+    // 手元に持たない。Android が Context ごとに覚えている (持つと、テストで作り直した Application の前のものを使い続ける)
     private fun prefs(ctx: android.content.Context) =
-        sp ?: ctx.applicationContext.getSharedPreferences("drafts", android.content.Context.MODE_PRIVATE).also { sp = it }
+        ctx.applicationContext.getSharedPreferences("drafts", android.content.Context.MODE_PRIVATE)
 
     fun get(ctx: android.content.Context, channelId: String): String = mem[channelId] ?: prefs(ctx).getString(channelId, null).orEmpty()
 
@@ -130,6 +129,21 @@ object Drafts {
     fun persist(ctx: android.content.Context, channelId: String) {
         val t = mem[channelId] ?: return
         prefs(ctx).edit().apply { if (t.isBlank()) remove(channelId) else putString(channelId, t) }.apply()
+    }
+
+    /**
+     * 送信を始めた。入力欄を空にしたのに合わせて、送る本文を下書きから外す。
+     * 送信中に打った文は、この後の [set] で入る。
+     */
+    fun startSend(channelId: String) { mem[channelId] = "" }
+
+    /**
+     * 送れた (または送信待ちに入れた)。送った本文は下書きに戻さず、送信中に打った文だけを残す (#79)。
+     * 入力欄 (画面) ではなく下書きの記録を見るので、送信中にチャンネルを離れていても打った文が残る。
+     */
+    fun finishSend(ctx: android.content.Context, channelId: String) {
+        val t = mem[channelId]
+        if (t.isNullOrBlank()) remove(ctx, channelId) else persist(ctx, channelId)
     }
 
     fun remove(ctx: android.content.Context, channelId: String) {
@@ -305,6 +319,7 @@ fun Composer(
         val keep = body
         val keepAttach = attachments.toList()
         state.clearText()
+        Drafts.startSend(channelId)
         attachments.clear()
         onCancelReply()
         sending = true
@@ -321,7 +336,8 @@ fun Composer(
                 latestOnSent(sent.id)
                 // 共有シート・ランチャーに、このチャンネルを直接の送り先として出す (#25)
                 com.giracle.android.ui.ChannelShortcuts.reportSent(appCtx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
-                Drafts.remove(appCtx, channelId)
+                // 送信中に次の文を打ち始めていたら、それは下書きとして残す (#79)
+                Drafts.finishSend(appCtx, channelId)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -329,7 +345,7 @@ fun Composer(
                 if (Outbox.isNetworkFailure(e)) {
                     // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
                     graph.outbox.add(channelId, body, ids, reply)
-                    Drafts.remove(appCtx, channelId)
+                    Drafts.finishSend(appCtx, channelId)
                     appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
                     // 送信中に次の文を打ち始めていたら、消さずに後ろへ残す
