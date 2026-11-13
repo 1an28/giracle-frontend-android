@@ -123,8 +123,11 @@ class UiScreenshotTest {
         rule.waitForIdle()
         val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        // 押せる範囲が 48dp に足りない要素を、CI のログに出す (D-045 の P-4)。今は知らせるだけで、失敗にはしない
-        rule.smallTouchTargets(rule.density).forEach { println("TOUCH-TARGET $name: $it") }
+        // 押せる範囲が 48dp に足りない要素を、CI のログに出す (D-045 の P-4)。CI の live-test は TOUCH-TARGET が 1 件でもあれば失敗にする (#68)。
+        // Issue にした既知の不足は TOUCH-TARGET-KNOWN として出し、失敗にはしない
+        rule.smallTouchTargets(rule.density).forEach {
+            if (it.startsWith(KNOWN_PREFIX)) println("TOUCH-TARGET-KNOWN $name: $it") else println("TOUCH-TARGET $name: $it")
+        }
     }
 
     private fun exists(m: SemanticsMatcher) = rule.onAllNodes(m).fetchSemanticsNodes().isNotEmpty()
@@ -294,7 +297,9 @@ class UiScreenshotTest {
         waitTag(TestTags.message(old)); shot("12_pane_wide_scrolled")
 
         // 狭くする (1 ペイン): チャンネルだけが出て、表示位置はそのまま
-        size.value = androidx.compose.ui.unit.DpSize(400.dp, 800.dp)
+        // 高さは画面 (768dp) に収める。はみ出すと DeviceConfigurationOverride.ForcedSize が密度を下げて縮めるため、
+        // 押せる範囲の検査で 40dp のボタンが 38dp に見えてしまう (#68)
+        size.value = androidx.compose.ui.unit.DpSize(400.dp, 760.dp)
         rule.waitForIdle()
         assertTrue("1 ペインに切り替えるとホームが出たまま", !exists(hasTestTag(TestTags.SCREEN_HOME)))
         assertTrue("1 ペインに切り替えると表示位置が戻った", exists(hasTestTag(TestTags.message(old))))

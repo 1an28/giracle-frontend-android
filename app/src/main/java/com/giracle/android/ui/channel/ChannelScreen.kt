@@ -46,8 +46,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
+import com.giracle.android.ui.common.SmallFab48
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -396,12 +396,13 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
                     // 未読の始まりが下に隠れたとき (上へ読み進めた後) と、まだ一度も見ていないのに画面の外にあるとき
                     val showUnread = unreadPlace == UnreadPlace.Below || (unreadPlace == UnreadPlace.Above && !unreadSeen)
                     Column(
-                        Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                        // 押せる範囲は見た目の周り 4dp まで (SmallFab48) なので、余白と間隔を 4dp ずつ減らして見た目の位置を保つ
+                        Modifier.align(Alignment.BottomEnd).padding(12.dp),
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         if (showUnread) {
-                            SmallFloatingActionButton(
+                            SmallFab48(
                                 onClick = {
                                     // 開いたときと同じ位置 (未読の始まりの少し下まで見える) へ
                                     scope.launch { listState.scrollToItem((unreadIndex - 2).coerceAtLeast(0)) }
@@ -410,7 +411,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
                             ) { Text("未読の始まりへ", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelLarge) }
                         }
                         if (!history.atEnd || showJump) {
-                            SmallFloatingActionButton(
+                            SmallFab48(
                                 onClick = {
                                     scope.launch {
                                         if (!store.history(channelId).value.atEnd) runCatching { store.jumpToLatest(channelId) }
