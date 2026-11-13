@@ -304,25 +304,33 @@ fun Composer(
         sending = true
         // 送信はアプリの scope で行い、送った直後に画面を離れても取り消さない。
         // 以前は画面の scope で送っており、送ってすぐ「戻る」と送信が取り消され、入力欄も空にした後なので本文が消えていた
+        // 送信中にログアウトしたら、後始末 (送信待ち・下書き・ショートカットへの書き込み) をしない。
+        // 前のアカウントの本文が残り、次のアカウントで送られるのを防ぐ (ログアウトでストアが作り直される)
+        val sessionStore = graph.store
         graph.scope.launch(Dispatchers.Main.immediate) {
             try {
                 store.send(channelId, body, ids, reply)
+                if (graph.store !== sessionStore) return@launch
                 // 共有シート・ランチャーに、このチャンネルを直接の送り先として出す (#25)
                 com.giracle.android.ui.ChannelShortcuts.reportSent(appCtx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
                 Drafts.remove(appCtx, channelId)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (graph.store !== sessionStore) return@launch
                 if (Outbox.isNetworkFailure(e)) {
                     // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
                     graph.outbox.add(channelId, body, ids, reply)
                     Drafts.remove(appCtx, channelId)
                     appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
-                    state.setTextAndPlaceCursorAtEnd(keep)
+                    // 送信中に次の文を打ち始めていたら、消さずに後ろへ残す
+                    val cur = state.text.toString()
+                    val restored = if (cur.isBlank()) keep else "$keep\n$cur"
+                    state.setTextAndPlaceCursorAtEnd(restored)
                     attachments.addAll(keepAttach)
                     // 画面を離れていても、次に開いたときに本文が戻るよう下書きにも書く
-                    Drafts.set(channelId, keep)
+                    Drafts.set(channelId, restored)
                     Drafts.persist(appCtx, channelId)
                     appCtx.toast("送信できませんでした: ${e.userMessage()}")
                 }
