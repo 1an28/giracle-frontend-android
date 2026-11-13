@@ -1,0 +1,61 @@
+name: device-benchmark
+
+# Firebase Test Lab の実機で、配布版 (R8 適用後) の起動時間を測る (D-048)。
+# 無料の枠 (Spark: 実機は 1 日 5 回) を守るため、手動と 1 日 1 回だけ走らせる。push のたびには回さない。
+# Secrets の FIREBASE_SA_KEY (サービスアカウントの鍵) が無ければ、何もせずに成功で終わる。準備は docs/ROADMAP.md。
+# Test Lab の端末はランナーのサーバーに届かないので、今はログイン前 (最初の画面) までの起動だけを測る。
+# ログイン後の起動とスクロールは、端末からサーバーへ届ける方法を持ち主が選んでから足す (ROADMAP)。
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "端末 (例: model=shiba,version=34)。空なら Google の実機で API が最も新しいものを選ぶ"
+        required: false
+        default: ""
+  schedule:
+    # 毎日 3:17 (日本時間)
+    - cron: "17 18 * * *"
+
+concurrency:
+  group: device-benchmark
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          KEY: ${{ secrets.FIREBASE_SA_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else echo "FIREBASE_SA_KEY が無いので測らない (準備は docs/ROADMAP.md)"; echo "enabled=false" >> "$GITHUB_OUTPUT"; fi
+
+  measure:
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - name: Install SDK packages
+        run: .github/scripts/sdk-install.sh
+      # 配布版は debug 鍵で署名する (R8 の処理は本物の配布版と同じ)。Baseline Profile は main に入っているものが同梱される
+      - name: Build release APK and benchmark APK
+        run: ./gradlew :app:assembleRelease :baselineprofile:assembleDebug
+      - uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Run on Firebase Test Lab
+        timeout-minutes: 40
+        env:
+          DEVICE: ${{ inputs.device }}
+        run: .github/scripts/device-benchmark.sh
