@@ -46,13 +46,15 @@ logcat_stop() { # $1: ファイル $2: 実行の名前
   kill "$LOGCAT_PID" 2>/dev/null || true
   wait "$LOGCAT_PID" 2>/dev/null || true
   if grep -q "E2E-LOG start=$2" "$1" && grep -q "E2E-LOG end=$2" "$1"; then
-    echo "logcat ($2): 始まりと終わりの印がそろっている (実行の間のログは欠けていない)"
+    echo "logcat ($2): 始まりと終わりの印がそろっている (流す途中で logd に切られていない)"
   else
     # 結果の印が見つからない失敗が、ログの欠けによるものだと分かるようにする
     echo "::warning::logcat ($2) の始まりか終わりの印が無い。ログが欠けていて、下の「動いていない」の判定は当てにならない"
   fi
 }
 
+# 実行ごとに追記するので、前の実行 (手元で 2 回目を動かしたとき) の行を残さないよう空にしておく
+: > "$OUT/logcat.txt"
 logcat_start "$OUT/logcat.txt" fast
 t0=$(date +%s)
 LAN_ARGS=()
