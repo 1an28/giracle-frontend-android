@@ -96,6 +96,8 @@ echo "::group::e2e の結果の印"; grep -o "E2E-RESULT .*" "$OUT/logcat.txt"; 
 # よく使う作業の手数と時間 (D-046)。エミュレータの時間は絶対値ではなく、前の実行 (docs/UI_PRINCIPLES.md 9 章の基準) との比較に使う
 echo "::group::よく使う作業の手数と時間 (ux)"
 grep -oE "E2E-RESULT ux net=.*" "$OUT/logcat.txt" | sed "s/E2E-RESULT ux //"
+# 手がかり: 再同期・スナップショットからの復元・アプリのプロセスの起動 (つなぎ直した後の切り替えの値を読むため)
+grep -E "GiracleSync|E2E-RESULT ux_test|ActivityManager: Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | tail -n 40
 echo "::endgroup::"
 if [ $status = 0 ] && ! grep -q "E2E-RESULT ux_test=done net=fast" "$OUT/logcat.txt"; then
   echo "::error::よく使う作業の測定 (uxTasks) が最後まで動いていない"
