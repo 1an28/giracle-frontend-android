@@ -439,15 +439,23 @@ class ReleaseAppTest {
         val phases = mutableMapOf<String, Long>()
         val detail = mutableMapOf<String, String>()
         val re = Regex("send phase=(\\w+) t=(\\d+)(.*)")
-        device.executeShellCommand("logcat -d -s $PERF_TAG:I").lines().forEach { line ->
-            val m = re.find(line) ?: return@forEach
-            val t = m.groupValues[2].toLong()
-            // 送信を押す前 (前の送信) の記録は使わない。同じ区切りが複数あれば最初のもの
-            if (t >= t0 && m.groupValues[1] !in phases) {
-                phases[m.groupValues[1]] = t
-                detail[m.groupValues[1]] = m.groupValues[3].trim()
+        // 近くへ動かすときは、動きの途中で返信が見つかる。送る動きの終わり (frame か scroll_cancelled) が出るまで読み直す (上限 3 秒)
+        val end = SystemClock.uptimeMillis() + 3_000
+        do {
+            phases.clear()
+            detail.clear()
+            device.executeShellCommand("logcat -d -s $PERF_TAG:I").lines().forEach { line ->
+                val m = re.find(line) ?: return@forEach
+                val t = m.groupValues[2].toLong()
+                // 送信を押す前 (前の送信) の記録は使わない。同じ区切りが複数あれば最初のもの
+                if (t >= t0 && m.groupValues[1] !in phases) {
+                    phases[m.groupValues[1]] = t
+                    detail[m.groupValues[1]] = m.groupValues[3].trim()
+                }
             }
-        }
+            val settled = "frame" in phases || "scroll_cancelled" in phases
+            if (!settled) SystemClock.sleep(100)
+        } while (!settled && SystemClock.uptimeMillis() < end)
         fun at(p: String) = phases[p]?.let { it - t0 } ?: -1
         Log.i(TAG, "E2E-RESULT ux net=$uxNet task=reply_breakdown input=${at("tap")} click=${task.lastClickMs} " +
             "http=${at("http_done")} ws=${at("ws_arrived")} in_list=${at("in_list")} scroll=${at("scroll_done")} " +
