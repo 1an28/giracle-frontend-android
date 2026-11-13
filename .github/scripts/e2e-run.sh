@@ -3,7 +3,7 @@
 # 前提: emulator-start.sh で起動済み、localhost:3333 にサーバー (local-server)、APK はビルド済み。
 #   APP_APK : 確かめる APK (既定: assembleRelease の出力)
 #   LAN_SERVER : 端末から LAN のアドレスで見たサーバー (既定 http://10.0.2.2:3333 = エミュレータから見たランナー)。
-#                電波を切る確認 (#37) とローカルネットワーク権限の確認 (#42) に使う。空にすると飛ばす
+#                電波を切る確認 (#37)・ローカルネットワーク権限の確認 (#42)・遅い回線でのよく使う作業の測定 (D-046) に使う。空にするとすべて飛ばす
 # 結果は e2e-out/ (画面・logcat・crash バッファ) に置く。
 set -uo pipefail
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
@@ -39,9 +39,15 @@ echo "e2e: $(( $(date +%s) - t0 ))s"
 
 # よく使う作業を、遅い回線でも測る (D-046)。上の実行は端末の localhost (adb reverse) なので、通信をほぼ待たない。
 # LAN のアドレス (エミュレータの仮想ネットワークを通る) につなぎ、エミュレータの遅延 (edge: 80〜400ms) を足す
+SLOW_OK=1
 if [ -n "$LAN_SERVER" ]; then
+  # 1 回目のクラッシュの記録を、消す前に取っておく (下のクラッシュの判定は crash.txt だけを見る)
+  "$ADB" logcat -b crash -d > "$OUT/crash.txt" 2>&1
   "$ADB" logcat -c || true
-  "$ADB" emu network delay edge
+  # 遅延が効いたことを確かめる (効かないまま net=slow として記録しないように)
+  delay_out=$("$ADB" emu network delay edge 2>&1)
+  echo "adb emu network delay edge: $delay_out"
+  echo "$delay_out" | grep -q "OK" || { echo "::error::エミュレータの回線の遅延を設定できない: $delay_out"; SLOW_OK=0; }
   t1=$(date +%s)
   "$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 \
     -e class com.giracle.e2e.ReleaseAppTest#uxTasks -e uxServer "$LAN_SERVER" -e uxNet slow \
@@ -50,7 +56,7 @@ if [ -n "$LAN_SERVER" ]; then
   "$ADB" emu network delay none
   "$ADB" logcat -d >> "$OUT/logcat.txt" 2>&1
 fi
-"$ADB" logcat -b crash -d > "$OUT/crash.txt" 2>&1
+"$ADB" logcat -b crash -d >> "$OUT/crash.txt" 2>&1
 "$ADB" pull "/sdcard/Android/data/$TEST_PKG/files/screenshots" "$OUT/" > /dev/null 2>&1 || true
 
 status=0
@@ -79,6 +85,7 @@ show_clues() {
 }
 # am instrument は失敗しても終了コードが 0 なので、出力で判断する
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
+[ $SLOW_OK = 1 ] || status=1
 if [ -n "$LAN_SERVER" ] && ! grep -q '^OK (' "$OUT/instrument-slow.txt"; then
   echo "::error::遅い回線でのよく使う作業の測定 (uxTasks) が失敗した。instrument-slow.txt を見る"
   tail -n 40 "$OUT/instrument-slow.txt"

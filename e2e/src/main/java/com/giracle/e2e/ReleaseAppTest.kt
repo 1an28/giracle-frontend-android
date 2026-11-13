@@ -31,6 +31,8 @@ import java.util.regex.Pattern
  *   lanServer   端末から LAN のアドレスで見たサーバー (CI は http://10.0.2.2:3333)。無ければ、それを使う確認を飛ばす。
  *               adb reverse の localhost は端末の通信網を通らないので、電波を切る確認 (#37) と
  *               Android 17 のローカルネットワーク権限の確認 (#42) はこちらを使う
+ *   uxServer / uxNet  よく使う作業の測定 (uxTasks) でアプリがつなぐサーバーと、ログに付ける回線の名前
+ *               (既定 server / fast。e2e-run.sh が遅い回線 (slow) でも測る。D-046)
  *
  * 1 つの流れにしてあるのは、ログイン → チャンネル → 背面 → 設定 と、前の段階の状態を引き継ぐため。
  * 各段階の画面を [shots] に保存する (CI が取り出して成果物にする)。
@@ -270,7 +272,7 @@ class ReleaseAppTest {
      * よく使う作業 (docs/UI_PRINCIPLES.md の 1 章と 9 章、D-046) の手数と時間を測り、ログに出す。
      * 手数は利用者がする操作 (押す・長押し・すべらせる・戻る) の回数。文字の入力は数えない。
      * 時間は、最後の操作から、終わりの状態の要素が画面に出るまで (エミュレータなので、前の実行との比較だけに使う)。
-     * 結果は「E2E-RESULT ux task=... taps=... ms=...」の行。e2e-run.sh が CI のログにまとめて出す。
+     * 結果は「E2E-RESULT ux net=... task=... taps=... ms=...」の行。e2e-run.sh が CI のログにまとめて出す。
      */
     @Test fun uxTasks() {
         // 準備: A は既読 25 件の後に未読 20 件、B は 10 件 (1 件目に検索の語)
@@ -306,7 +308,7 @@ class ReleaseAppTest {
                 wait(res("composer.input"), 5_000, "入力欄").text = reply
                 tap(wait(res("composer.send"), 5_000, "送信ボタン"))
                 // 読んでいる途中で返すと、送った返信が画面の外 (一番下) に出て見えないことがある。それも記録する。
-                // 送信待ちの一覧 (composer.outbox) にも本文が一時的に出るので、メッセージの一覧の中だけを探す
+                // メッセージの一覧の中だけを探す (一覧の外の入力欄などに残った本文に一致させないため。#57)
                 done(By.res("channel.messages").hasDescendant(By.textContains(reply)), timeoutMs = 8_000, required = false)
             }
             waitFor("サーバーに返信が届く") { admin.recentTexts(channelId).contains(reply) }
