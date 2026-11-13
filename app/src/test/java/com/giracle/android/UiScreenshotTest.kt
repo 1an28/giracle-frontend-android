@@ -123,6 +123,8 @@ class UiScreenshotTest {
         rule.waitForIdle()
         val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // 押せる範囲が 48dp に足りない要素を、CI のログに出す (D-045 の P-4)。今は知らせるだけで、失敗にはしない
+        rule.smallTouchTargets(rule.density).forEach { println("TOUCH-TARGET $name: $it") }
     }
 
     private fun exists(m: SemanticsMatcher) = rule.onAllNodes(m).fetchSemanticsNodes().isNotEmpty()
