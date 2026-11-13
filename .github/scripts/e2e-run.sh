@@ -114,6 +114,14 @@ if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT lan_test=don
   echo "::error::LAN のサーバーでの確認 (lanServerPermissionAndOfflineSend) が最後まで動いていない (飛ばされた?)"
   status=1
 fi
+if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT offline_start_test=done" "$OUT/logcat.txt"; then
+  echo "::error::電波が無いときの起動の確認 (offlineColdStart) が最後まで動いていない (飛ばされた?)"
+  status=1
+fi
+# 電波が無いときの起動 (#82、P-2)。前回の内容が見え続けるか・電波が戻ったら操作なしで最新になるか
+echo "::group::電波が無いときの起動 (offline_start)"
+grep -oE "E2E-RESULT offline_start .*" "$OUT/logcat.txt" | sed "s/E2E-RESULT //"
+echo "::endgroup::"
 [ $status = 0 ] || show_clues
 if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"

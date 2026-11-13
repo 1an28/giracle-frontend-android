@@ -545,6 +545,62 @@ class ReleaseAppTest {
         Log.i(TAG, "E2E-RESULT lan_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
     }
 
+    /**
+     * 電波が無いときに起動する (#82、P-2)。前回の内容が見え続けるか、電波が戻ったら操作なしで最新になるかを測る。
+     * adb reverse の localhost は機内モードでも届くので、LAN のアドレスのサーバー (lanServer) を使う。
+     * 結果は「E2E-RESULT offline_start ...」の行。
+     */
+    @Test fun offlineColdStart() {
+        assumeTrue("lanServer の指定が無い", lanServer != null)
+        freshLogin(lanServer!!)
+        findScrolling(res("home.channel:$channelId"), "確認用チャンネル").click()
+        wait(res("screen.channel"), 10_000, "チャンネル画面")
+        val before = "圏外起動の前 $suffix"
+        bob.send(channelId, before)
+        wait(By.textContains(before), 20_000, "圏外にする前の受信")
+        // 背面に回して前回の内容 (スナップショット) を書かせてから、プロセスを止める
+        device.pressHome()
+        SystemClock.sleep(3_000)
+        shell("am force-stop $pkg")
+        val after = "圏外の間の送信 $suffix"
+        var shownMs = -1L
+        var errorMs = -1L
+        var hiddenMs = -1L
+        shell("cmd connectivity airplane-mode enable")
+        try {
+            SystemClock.sleep(3_000)
+            val t0 = SystemClock.uptimeMillis()
+            launch()
+            // 15 秒見続ける (読み込みの失敗は、接続のタイムアウト 10 秒より前に出るはず)
+            while (SystemClock.uptimeMillis() - t0 < 15_000) {
+                val now = SystemClock.uptimeMillis() - t0
+                val visible = device.findObject(By.textContains(before)) != null
+                if (visible && shownMs < 0) shownMs = now
+                if (!visible && shownMs >= 0 && hiddenMs < 0) hiddenMs = now
+                if (errorMs < 0 && device.findObject(By.text(LOAD_ERROR_TEXT)) != null) errorMs = now
+                SystemClock.sleep(300)
+            }
+            shot("offline_start")
+            // 圏外の間に、相手が送る (端末の外のこと。電波が戻ったら見えるはず)
+            bob.send(channelId, after)
+        } finally {
+            shell("cmd connectivity airplane-mode disable")
+        }
+        val stillShown = device.findObject(By.textContains(before)) != null
+        val back = SystemClock.uptimeMillis()
+        val updated = device.wait(Until.findObject(By.textContains(after)), 60_000) != null
+        val updatedMs = if (updated) SystemClock.uptimeMillis() - back else -1L
+        shot("offline_back")
+        val errorStill = device.findObject(By.text(LOAD_ERROR_TEXT)) != null
+        Log.i(
+            TAG,
+            "E2E-RESULT offline_start shown_ms=$shownMs hidden_ms=$hiddenMs error_ms=$errorMs still_shown_15s=$stillShown " +
+                "updated_after_net_ms=$updatedMs error_after_net=$errorStill sdk=${android.os.Build.VERSION.SDK_INT}",
+        )
+        assertAlive("電波が無いときに起動した後")
+        Log.i(TAG, "E2E-RESULT offline_start_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
+    }
+
     /** 共有するファイル (64x64 の PNG と、短い文書) をキャッシュの share/ に作る */
     private fun writeShareFiles(png: String, txt: String) {
         val dir = File(instr.context.cacheDir, "share").apply { mkdirs() }
@@ -667,5 +723,7 @@ class ReleaseAppTest {
     companion object {
         private const val TAG = "GiracleE2E"
         private val ALLOW_BUTTON: BySelector = By.res(Pattern.compile(".*:id/permission_allow_button"))
+        /** 読み込みに失敗したときの画面全体の表示 (ui/Root.kt の LoadError) */
+        private const val LOAD_ERROR_TEXT = "サーバーから読み込めませんでした"
     }
 }
