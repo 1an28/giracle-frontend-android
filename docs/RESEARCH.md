@@ -68,6 +68,16 @@
   「Firebase Test Lab is deprecated and will be fully shut down on September 30, 2027」。このセッションでは本文を開けなかった。#69 (#78) が原文で確かめた (下の項)
 ## 2026-11-14
 
+### 「回線がつながった」の知らせは、サーバーに届くことを意味するか (#82)
+- 入り口: 「回線が戻ったら (`onAvailable`) やり直せば足りる」を当たり前にしていた。知らせの意味を原文で確かめた
+- 確かめたこと: Android の `ConnectivityManager.NetworkCallback` の資料 (developer.android.com、2026-11-14) では、`onAvailable` は
+  "Called when the framework connects and has declared a new network ready for use." で、インターネットに届くこと (検証済み) は書いていない。
+  Android 8 以降は直後に `onCapabilitiesChanged` が必ず呼ばれる、とある (能力の変化はそちらで見る)
+- 確かめたこと: Element X Android は、起動時に圏外でも最初の同期を一度試し、そのあと回線の状態を見続けて同期を始め直す (#82 のコメント。原文で確かめた)
+- 判断したこと: 回線の知らせだけに頼らず、WebSocket がつながったとき・前面に戻ったときにもやり直す (D-056)。
+  レビュー役が、読み込みの最中に来たきっかけを捨てると、回線が戻った直後の読み込みが失敗したときに次のきっかけが来ない、と見つけた
+- 確かめていないこと: 実機で、`onAvailable` の直後の通信がどのくらい失敗するか (エミュレータの機内モードの入り切りでしか測っていない)
+
 ### 要約で読んだ出典を、原文で読み直す (#69)
 - 入り口: 「検索の要約で読んだものも、大筋は合っているだろう」を当たり前にしていた。D-053 でネットワークを制限なしにしたので、原文で確かめ直した
 - 確かめたこと: 原文と違っていたのは 3 か所。直した先は UI_PRINCIPLES.md の 2・3 章と出典、D-045・D-046・D-048

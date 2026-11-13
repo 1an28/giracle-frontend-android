@@ -89,7 +89,8 @@ class ReleaseAppTest {
         val sent = "送信テスト $suffix"
         wait(res("composer.input"), 10_000, "入力欄").apply { click(); text = sent }
         wait(res("composer.send"), 5_000, "送信ボタン").click()
-        wait(By.textContains(sent), 15_000, "自分の送信")
+        // 入力欄の文字に当たらないよう、メッセージの一覧の中だけで探す (入力欄に残ったままでも通っていた)
+        wait(res("channel.messages").hasDescendant(By.textContains(sent)), 15_000, "自分の送信 (一覧の中)")
         waitFor("サーバーに送信が届く") { admin.recentTexts(channelId).contains(sent) }
         shot("sent")
 
@@ -665,6 +666,7 @@ class ReleaseAppTest {
         waitDismissingSystemDialogs(sel, timeoutMs.also { Log.i(TAG, "待つ: $what") }) ?: run {
             assertAlive("「$what」を待つ間")
             shot("missing")
+            dumpUi("「$what」が出ない")
             fail("「$what」が ${timeoutMs / 1000} 秒以内に出ない"); error("unreachable")
         }
 
@@ -727,7 +729,18 @@ class ReleaseAppTest {
             SystemClock.sleep(500)
         }
         shot("timeout")
+        dumpUi("「$what」が満たされない")
         fail("$what (${timeoutMs / 1000} 秒待った)")
+    }
+
+    /** 失敗したときの手がかり: 画面の要素 (testTag・文字・押せるか) を logcat に出す。e2e-run.sh が CI のログに出す */
+    private fun dumpUi(reason: String) {
+        runCatching {
+            Log.i(TAG, "UI-DUMP $reason")
+            device.findObjects(By.res(Pattern.compile(".+"))).take(60).forEach { o ->
+                Log.i(TAG, "UI-DUMP  ${o.resourceName} text=${o.text?.take(60)} enabled=${o.isEnabled}")
+            }
+        }
     }
 
     private fun assertAlive(whenDoing: String) {

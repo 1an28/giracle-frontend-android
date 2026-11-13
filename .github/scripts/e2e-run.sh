@@ -65,6 +65,9 @@ kill $PROXY_PID 2>/dev/null || true
 status=0
 # 失敗したときの手がかりを、成果物を開かなくても CI のログで読めるように出す
 show_clues() {
+  echo "::group::失敗したときの画面の要素 (UI-DUMP)"
+  grep -E "GiracleE2E: UI-DUMP" "$OUT/logcat.txt" | sed -E 's/.*UI-DUMP/UI-DUMP/' | tail -n 200
+  echo "::endgroup::"
   echo "::group::logcat (アプリ・起動・クラッシュに関係する行)"
   grep -E "GiracleE2E|GiracleNav|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
   echo "::endgroup::"
