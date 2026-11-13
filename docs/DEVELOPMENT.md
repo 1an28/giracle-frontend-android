@@ -122,6 +122,8 @@ python3 devtools/push-e2e.py          # 登録 → メンション → 受信 �
    - 目安 (2026-11 の実績): docs-check 1 分弱・live-test 約 2 分・build 約 4 分・e2e 約 10 分・
      baseline-profile 約 19 分 (baselineprofile/ などを変えたときだけ)。文書だけの変更は docs-check だけが走る
    - 最初の確認は、走る中で一番長いものの目安 + 2 分ほど後
+   - 「check suite が終わった」という知らせは、ワークフローごとに来る。先に終わった docs-check だけで来ることがあるので、
+     知らせを受けても check runs をすべて見て、全部が終わったかを確かめる (2026-11-13 に #63 で確かめた)
 3. **マージの直前に main を取り込む**。`git fetch origin main` して、main が PR の元から進んでいれば
    `git merge origin/main` する (GitHub が競合と言っていなくても。番号の重なりは競合として出ないため)。
    - DECISIONS.md・RESEARCH.md は、`.gitattributes` の設定で両方の追記が自動で残る。ただし既存の行を両方が書き換えていても、
