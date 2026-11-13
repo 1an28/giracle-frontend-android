@@ -367,6 +367,22 @@ class ChatStore(
         }
     }
 
+    /**
+     * 開いているチャンネルが前回の内容 (キャッシュ) のままなら取り直す。圏外で起動して取り直せなかったチャンネルを、
+     * つながって読み込みが済んだ後に最新にする (#82)。失敗しても表示は残す
+     */
+    suspend fun refreshOpenChannel() {
+        val current = currentChannelId ?: return
+        if (histories[current]?.value?.fromCache != true) return
+        try {
+            openChannel(current)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "refreshOpenChannel failed", e)
+        }
+    }
+
     /** 最新位置から読み込み直す (「最新へ移動」ボタン) */
     suspend fun jumpToLatest(channelId: String) {
         val flow = hist(channelId)

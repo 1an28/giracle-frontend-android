@@ -94,6 +94,12 @@ class AppGraph(context: Context) {
     private val _phase = MutableStateFlow<AppPhase>(AppPhase.Starting)
     val phase: StateFlow<AppPhase> = _phase
 
+    private val _loading = MutableStateFlow(false)
+    /** サーバーからの読み込み ([loadSession]) の最中か。失敗の表示で「やり直している」ことを出すため */
+    val loading: StateFlow<Boolean> = _loading
+    /** 動いている読み込み。同時に 2 つ走らせない (回線の復帰・WebSocket の接続・前面への切り替えが重なっても 1 回) */
+    private var loadJob: kotlinx.coroutines.Job? = null
+
     private var snapshotJob: kotlinx.coroutines.Job? = null
     // init の中で起こす処理から使うので、init より前に置く
     private val snapshotFile = com.giracle.android.data.SafeFile(java.io.File(appContext.filesDir, "snapshot.json"))
@@ -117,8 +123,13 @@ class AppGraph(context: Context) {
             _phase.collect { android.util.Log.i("GiracleNav", "phase $it") }
         }
         scope.launch {
-            // つながったら送信待ちを送る (#30)
-            ws.state.collect { if (it == com.giracle.android.data.net.WsClient.State.Connected) flushOutbox() }
+            // つながったら送信待ちを送る (#30)。読み込みに失敗していたら (圏外で起動したなど) やり直す (#82)
+            ws.state.collect {
+                if (it == com.giracle.android.data.net.WsClient.State.Connected) {
+                    flushOutbox()
+                    retryLoadIfFailed()
+                }
+            }
         }
         scope.launch(Dispatchers.IO) {
             // 背面に回ったときのスナップショットを書く。書き込みはこの 1 本だけで行い、重ならない (#67)。
@@ -179,7 +190,7 @@ class AppGraph(context: Context) {
         // 上の行で画面から外れて scope が取り消されるため、そこで読み込むと途中で止まり
         // 「サーバーから読み込めませんでした」になっていた (#12 で発見)。待つ側が取り消されても読み込みは続く。
         sessionLoadStarted = true
-        scope.launch { loadSession(r.userId) }.join()
+        startLoad(r.userId).join()
     }
 
     suspend fun signUp(username: String, password: String, invite: String?) {
@@ -187,10 +198,26 @@ class AppGraph(context: Context) {
         signIn(username, password)
     }
 
+    /** 読み込みを始める。もう動いていれば、それを返す (2 つ走らせない) */
+    private fun startLoad(userId: String, before: kotlinx.coroutines.Job? = null): kotlinx.coroutines.Job = synchronized(this) {
+        loadJob?.takeIf { it.isActive }?.let { return it }
+        _loading.value = true
+        scope.launch {
+            try {
+                before?.join() // 前回の内容を出し終えてから最新に置き換える (逆になると古い内容で上書きされる)
+                loadSession(userId)
+            } finally {
+                _loading.value = false
+            }
+        }.also { loadJob = it }
+    }
+
     private suspend fun loadSession(userId: String) {
         try {
             store.initialLoad(userId)
             _phase.value = AppPhase.SignedIn(userId, ready = true)
+            // 開いているチャンネルが前回の内容のまま (圏外で開いて取り直せなかった) なら、ここで最新にする (#82)
+            store.refreshOpenChannel()
         } catch (e: ApiException) {
             if (e.isUnauthorized) signOutLocal()
             else _phase.value = AppPhase.SignedIn(userId, ready = false, error = e.body.ifBlank { e.message })
@@ -211,16 +238,26 @@ class AppGraph(context: Context) {
             if (sessionLoadStarted || p.ready) return
             sessionLoadStarted = true
         }
-        scope.launch {
-            snapshotJob?.join() // 前回の内容を出し終えてから最新に置き換える (逆になると古い内容で上書きされる)
-            loadSession(p.userId)
-        }
+        startLoad(p.userId, before = snapshotJob)
     }
 
+    /**
+     * 失敗した読み込みをやり直す (「再試行」)。失敗の表示 (error) は、やり直しが終わるまで残す。
+     * 消すと、前回の内容を出していた画面が「読み込み中」に戻り、また失敗するとちらつくため。やり直し中かは [loading] で出す
+     */
     fun retryLoad() {
         val p = _phase.value as? AppPhase.SignedIn ?: return
-        _phase.value = p.copy(error = null)
-        scope.launch { loadSession(p.userId) }
+        if (p.ready) return
+        startLoad(p.userId)
+    }
+
+    /**
+     * 読み込みに失敗したままなら、やり直す (#82)。回線が戻ったとき・WebSocket がつながったとき・前面に戻ったときに呼ぶ。
+     * 圏外で起動すると読み込みが失敗し、以前は利用者が「再試行」を押すまで最新にならなかった
+     */
+    fun retryLoadIfFailed() {
+        val p = _phase.value as? AppPhase.SignedIn ?: return
+        if (p.error != null) retryLoad()
     }
 
     suspend fun signOut() {
@@ -236,6 +273,8 @@ class AppGraph(context: Context) {
             prefs.pushEndpoint = null
             scope.launch(Dispatchers.IO) { runCatching { org.unifiedpush.android.connector.UnifiedPush.unregister(appContext) } }
         }
+        // 前のユーザーの読み込みを止める。残すと、次のログインが「もう動いている読み込み」としてそれを待ってしまう (startLoad)
+        synchronized(this) { loadJob?.cancel(); loadJob = null }
         store.stop()
         prefs.clearSession()
         com.giracle.android.ui.channel.Drafts.clear(appContext)

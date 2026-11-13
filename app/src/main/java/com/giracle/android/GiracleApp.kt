@@ -34,7 +34,11 @@ class GiracleApp : Application(), SingletonImageLoader.Factory {
                 object : android.net.ConnectivityManager.NetworkCallback() {
                     // 呼ばれるのは回線管理のスレッドなので、前面・背面の切り替えと同じメインスレッドで扱う
                     override fun onAvailable(network: android.net.Network) {
-                        graph.scope.launch(kotlinx.coroutines.Dispatchers.Main) { graph.ws.nudge() }
+                        graph.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            graph.ws.nudge()
+                            // 圏外で起動して読み込みに失敗していたら、操作を待たずにやり直す (#82、P-2)
+                            graph.retryLoadIfFailed()
+                        }
                     }
                 },
             )
@@ -45,6 +49,7 @@ class GiracleApp : Application(), SingletonImageLoader.Factory {
             override fun onStart(owner: LifecycleOwner) {
                 graph.setForeground(true)
                 graph.ensureSessionLoaded()
+                graph.retryLoadIfFailed()
                 // 背面で切断していた場合はつなぎ直す (再接続後に取りこぼしを取り直す)
                 if (graph.phase.value is AppPhase.SignedIn) graph.ws.start()
             }
