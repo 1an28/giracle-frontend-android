@@ -643,11 +643,14 @@
   - P-7 どのチャンネルから読むかを、開かずに決められる材料を一覧に出す
 - **前提 (持ち主との相談、2026-11)**: 持ち主の感覚・実機の操作は材料にしない (D-024)。今の配置を守ることに価値を置かない。
   M3 Expressive の調査は根拠にしない。Discord の 2023 年の反発は「遅さ」「よく使う操作が遠くなった」を教訓にする。
+  (2026-11-14 に原文で確かめた (#69): Discord は 2024-05 に、分けたサーバーと DM のタブを一つに戻した。反発の中身には配置そのものも入っていた。UI_PRINCIPLES.md 3 章)
 - **主な根拠**: Nielsen の 0.1/1/10 秒、Android の 48dp・16ms・700ms・起動の秒数、Parhi 2006 (親指 9.2mm)、
-  Hoober (中央 7mm・隅 12mm、親指の届く範囲の図は誤り)、Viget 2017 (スケルトンが最も遅く感じられた)、
+  Hoober (中央 7mm・隅 12mm、親指の届く範囲の図は誤り)、Viget 2017 (スケルトンが最も遅く感じられた。原文は今も開けていない)、
   Element X・Signal のコード、Slack 2020・Discord 2023・Telegram 2026 の刷新とその反応、
   Telegram・WhatsApp の低評価レビュー (160 件を読んで分類。配置への不満は少なく、「つながらず読めない」が多い)。
   多くは開発環境から原文を開けず、検索の要約で読んだ (UI_PRINCIPLES.md に「(要約)」と印を付けた)。
+  2026-11-14 に原文を開き直し (#69)、違っていた 3 か所 (Discord のタブ・Hoober の「端 9mm」・Nielsen への批判の中身) と、Apple の 44pt (最小ではなく既定) を直した。
+  Viget・VentureBeat・Discord の掲示板は今も開けず、「(要約)」のまま。
 - **CI で確かめる仕組み**: Compose の `enableAccessibilityChecks()` (Accessibility Test Framework) を Robolectric で試したが、
   働かなかった。ATF が作る画面の構造に Compose の中身が入らない (`ComposeView` の下に 0×0 の要素が 1 つだけ。
   読み上げを有効にしても同じ)。公式の例 (ラベルが空) も見つけない。
@@ -661,7 +664,7 @@
   最初の live-test で、リアクションの枠 (高さ 28dp)・続けて送ったメッセージの行 (高さ 24〜44dp)・絵文字を選ぶ画面の枠 (44dp) が見つかった (UI_PRINCIPLES.md の C-4・C-6・C-7)。
   ATF が Robolectric で Compose の中身を見ないこと (試験用のテストで確かめ、結果だけ残してテストは消した)。
 - **確かめていないこと**: 原則に沿って作り直した画面が実際に速く・使いやすくなるか。エミュレータで ATF が働くか。
-  レビューの分類の正しさ (1 人で分類し、標本は 160 件)。要約で読んだ出典の原文。
+  レビューの分類の正しさ (1 人で分類し、標本は 160 件)。Viget 2017・VentureBeat・Discord の掲示板の原文 (開けない)。
 
 ## D-046 見た目の作り直しより、体験 (UX) を先にする
 
@@ -677,6 +680,9 @@
   - UI_PRINCIPLES.md 4 章のレビューの分類では、低評価の多くは「使えない」(つながらない・落ちる・取れない) で、配置への不満は少なかった
     (Telegram 100 件中「操作・配置」1 件、WhatsApp 60 件中 3 件)。
   - Discord の 2023 年の刷新への反発の中身は、配置そのものより、遅さとよく使う操作が遠くなったこと (UI_PRINCIPLES.md 3 章。要約で読んだ)。
+    **2026-11-14 に原文で直した (#69)**: Discord は 2024-05 に、分けたサーバーと DM のタブを一つに戻した。理由は「スマホとデスクトップで配置が違い、頭の中で切り替えにくい」という声。
+    反発の中身には配置そのものも入っていたので、この理由は半分だけ合っている。ただ、上のレビューの分類と下の P-6 の理由は変わらず、
+    配置の変更が反発を招きうることは、むしろ「測ってから変える」順番を支える。判断は変えない。
   - 見た目を先に変えると、比べる基準 (手数・時間) が無いまま変わり、悪くなっても気づけない (P-6)。
 - **測り方の決めごと**:
   - 手数は、利用者がする操作 (押す・長押し・すべらせる・戻る) の回数。文字の入力は数えない (入力欄を押すのは数える)。
@@ -740,24 +746,36 @@
   - スクロールのフレーム時間 (`ScrollBenchmark`、`FrameTimingMetric`) は、今はエミュレータ (`baseline-profile.yml` の最後) で測り、
     前の実行との比較に使う (UI_PRINCIPLES.md 8 章の案)。
   - `StartupBenchmark` は、データの無い端末でもログインしてから測るようにした (引数 `login=false` のときはしない)。
-- **調べたこと** (firebase.google.com・docs.cloud.google.com は開発環境から開けず、公式ページの原文は読めていない):
+- **調べたこと** (書いたときは firebase.google.com・docs.cloud.google.com を開けなかった。2026-11-14 に原文で確かめ直した (#69)。下の「原文で確かめたこと」):
   - gcloud 570.0.0 の `gcloud firebase test android run --help` (Google の CLI に入っている公式の説明): 実機の上限は 45 分、
     既定のバケットは無料で、使うには roles/editor が要る。`--results-bucket` のバケットは支払いの設定が要り、保存に費用がかかる。
     `--environment-variables` は `am instrument -e` として渡る。
-  - 検索の要約: Spark で実機 1 日 5 回・仮想の端末 10 回。Spark は支払い情報なしで使える (2016 年の公式ブログ)。
+  - 検索の要約 (2026-11-14 に原文で確かめ、合っていた。下の「原文で確かめたこと」): Spark で実機 1 日 5 回・仮想の端末 10 回。Spark は支払い情報なしで使える。
     Cloud Storage for Firebase は 2026-02 から Blaze が必要 (Test Lab の無料のバケットに当てはまるかは分からない。上の gcloud の説明とは食い違わない)。
     Test Lab は 2027-09-30 に終わり、Google Cloud の Developer Device Platform に移る (下の「終了の予定」)。
   - Macrobenchmark を Test Lab で動かす例: android/performance-samples の `.github/workflows/firebase_test_lab.yml`
     (`--directories-to-pull /sdcard/Download`、`additionalTestOutputDir=/sdcard/Download`、`no-isolated-storage=true`)。原文を読んだ。
-- **終了の予定** (2026-11-13、持ち主の相談セッションが検索で調べた。検索結果の要約で読み、firebase.google.com の原文は開けていない):
+- **終了の予定** (2026-11-13、持ち主の相談セッションが検索で調べた。2026-11-14 に Firebase のリリースノート (2026-09-30 の項)・FAQ の原文で確かめ、日付は合っていた (#69)):
   - Firebase の 2026-09-30 のリリースノートと「Firebase Test Lab Deprecation FAQ」(https://firebase.google.com/docs/test-lab/migrate-faq):
     Test Lab は非推奨で、2027-09-30 に完全に終わる (コンソールも API も)。後継は Google Cloud の Developer Device Platform
-  - Developer Device Platform は 2027-04-30 まで Test Lab と同じ料金で、その後は従量課金と月額の新しい料金になる。無料の枠が残るかは書かれていない
+  - Developer Device Platform は 2027-04-30 まで Test Lab と同じ料金で、その後は従量課金と月額の新しい料金になる。支払いの設定が要る (2026-11-14 に FAQ の原文で確かめた。下)
   - 第三者 (patrol の Issue #3321、Marathon Labs のブログ) も同じ日付を挙げている
   - 持ち主との相談の結論: 測れるのはログイン前の起動時間だけで、使えても 2027-09 まで。Firebase の準備は急がず、するかどうかは持ち主がいつ決めてもよい
+- **原文で確かめたこと** (2026-11-14、#69):
+  - 「Usage, quotas, and pricing」(https://firebase.google.com/docs/test-lab/usage-quotas-pricing): Spark (無料) は 1 日に仮想の端末 10 回・実機 5 回、
+    計 15 回まで。Blaze は実機 1 日 30 分・仮想 60 分まで無料で、超えると実機 1 時間 5 ドル・仮想 1 ドル (1 分単位で切り上げ)
+  - 「Firebase Test Lab Deprecation FAQ」(https://firebase.google.com/docs/test-lab/migrate-faq): 2027-09-30 の後はどの実行もできない (コンソールも API も止まる)。
+    後継の Developer Device Platform は 2027-04-30 まで Test Lab と同じ料金で、その後は従量課金と端末ごとの月額に変わる。
+    **「Test Lab は支払いの設定なしで一部使えたが、Developer Device Platform はプロジェクトに支払いの設定が要る」**。
+    つまり、後継に無料のまま移る道は無い (前は「無料の枠が残るかは分からない」と書いていた)
+  - Developer Device Platform の料金 (https://cloud.google.com/products/developer-device-platform#pricing): 実機の Device Run は公開プレビュー中 1 分 0.083 ドル、
+    2027-04 から 1 分 0.20 ドル、または 1 台月 250 ドル。エミュレータは 1 分 0.017 ドル → 0.06 ドル。無料の枠の記載は無い
+  - Cloud Storage for Firebase の変更 (https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024): 2026-02-03 から、
+    Cloud Storage for Firebase を使うには Blaze が要る。Spark のプロジェクトはバケットに 402・403 が返る。
+    Test Lab の結果の既定のバケットにも当てはまるかは、このページにも Test Lab のページにも書かれていない (確かめていない)
 - **確かめていないこと**: 実際に Test Lab で動くか (Secrets が無いので一度も動かしていない)。特に、self-instrumenting の計測用 APK を Test Lab が受け付けるか、
-  サービスアカウントで無料のバケットから結果を取り出せるか、自動で選ぶ端末が使えるか (試験版・廃止予定の版を tags で除いているが、tags の形は推測)。
-  Spark の枠の数が今も同じか。Test Lab の終わりの日付。
+  サービスアカウントで無料のバケットから結果を取り出せるか (2026-02 の Cloud Storage の変更が Test Lab の既定のバケットに及ぶか)、
+  自動で選ぶ端末が使えるか (試験版・廃止予定の版を tags で除いているが、tags の形は推測)。
 
 ## D-049 未読の始まりへ戻るボタン (C-5)
 
