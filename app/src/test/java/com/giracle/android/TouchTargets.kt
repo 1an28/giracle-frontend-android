@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.Density
  * Compose の Accessibility Test Framework の検査は、Robolectric では Compose の中身が見えず働かない (D-045) ので、
  * 意味情報 (semantics) を直接たどる。戻り値は足りない要素の説明 (見つからなければ空)。
  *
- * 数えないもの (#68、D-054):
+ * 数えないもの (#68、D-055):
  * - 文の中のリンク (本文の URL・メンションなど)。WCAG 2.2 の 2.5.8 と 2.5.5 の例外「Inline」(文の中の対象、
  *   または大きさが周りの文字の行の高さで決まるもの) に当たる。Material と Android の文書にはこの例外の記載が無い
  * - [knownShortfalls] に挙げた、直すと決めて Issue にしたが、まだ直していないもの。足りないことは変わらないので、
@@ -100,7 +100,7 @@ data class KnownShortfall(val tagPrefix: String, val issue: String, val reason: 
 
 val KNOWN_SHORTFALLS = listOf(
     // 続けて送られた 1 行のメッセージの行は 23dp で、上下の行と接する。Material 3 の Lists の仕様は一覧の項目にも 48dp を求めていて、
-    // 外す根拠は無かった (D-054)。直すには行の高さ (1 画面に見える量) を変えることになるので、見た目の作り直しと一緒に決める
+    // 外す根拠は無かった (D-055)。直すには行の高さ (1 画面に見える量) を変えることになるので、見た目の作り直しと一緒に決める
     KnownShortfall("channel.message:", "#75", "メッセージの行 (長押しでメニュー)"),
 )
 

@@ -50,7 +50,7 @@ jobs:
             grep -o '<testsuite [^>]*>' "$f"
             grep -q 'skipped="0"' "$f" || { echo "$c にスキップされたテストがある" >&2; exit 1; }
           done
-      - name: Touch targets smaller than 48dp (D-045, D-054)
+      - name: Touch targets smaller than 48dp (D-045, D-055)
         if: always()
         run: |
           f=app/build/test-results/testDebugUnitTest/TEST-com.giracle.android.UiScreenshotTest.xml
@@ -61,7 +61,7 @@ jobs:
           lines=$(grep -o 'TOUCH-TARGET [^&<]*' "$f" | sort -u || true)
           if [ -z "$lines" ]; then echo "押せる範囲が 48dp に足りない要素は無い"; exit 0; fi
           echo "$lines"
-          echo "::error::押せる範囲が 48dp に足りない要素: $(echo "$lines" | sed 's/^TOUCH-TARGET [^:]*: //' | sort -u | wc -l) 種類。直すか、直し方を Issue にして TouchTargets.kt の KNOWN_SHORTFALLS に足す (D-054)"
+          echo "::error::押せる範囲が 48dp に足りない要素: $(echo "$lines" | sed 's/^TOUCH-TARGET [^:]*: //' | sort -u | wc -l) 種類。直すか、直し方を Issue にして TouchTargets.kt の KNOWN_SHORTFALLS に足す (D-055)"
           exit 1
       - uses: actions/upload-artifact@v7
         if: always()

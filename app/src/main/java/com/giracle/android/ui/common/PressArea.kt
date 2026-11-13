@@ -20,7 +20,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 /**
- * 見た目はそのままで、押せる範囲を 48dp 以上にする (UI_PRINCIPLES.md の P-4、#68、D-054)。
+ * 見た目はそのままで、押せる範囲を 48dp 以上にする (UI_PRINCIPLES.md の P-4、#68、D-055)。
  *
  * Compose が小さい要素の押せる範囲を自動で 48dp に広げるのは、すぐ横や真下に別の押せる要素が無いときだけ
  * (`TouchHitBehaviorTest`)。一覧の上に浮くボタンや、隣の行と接する小さい要素は取られるので、押す処理そのものを 48dp 以上の箱に付ける。
