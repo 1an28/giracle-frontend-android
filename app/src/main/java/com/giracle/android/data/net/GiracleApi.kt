@@ -206,8 +206,12 @@ class GiracleApi(private val client: OkHttpClient, @Volatile var endpoint: Endpo
     suspend fun updateReadTime(channelId: String, readTime: String) =
         callUnit("POST", "message/read-time/update", obj("channelId" to channelId, "readTime" to readTime))
 
-    suspend fun send(channelId: String, text: String, fileIds: List<String>, replyingMessageId: String?): Message =
-        call("POST", "message/send", obj("channelId" to channelId, "message" to text, "fileIds" to fileIds, "replyingMessageId" to replyingMessageId))
+    suspend fun send(channelId: String, text: String, fileIds: List<String>, replyingMessageId: String?): Message {
+        val res = raw("POST", "message/send", obj("channelId" to channelId, "message" to text, "fileIds" to fileIds, "replyingMessageId" to replyingMessageId))
+        // 応答の本文を受け取った時点 (メインスレッドに戻る前)。通信と、戻るまでの待ちを分ける (#70)
+        com.giracle.android.data.SendTrace.mark("http_body")
+        return withContext(Dispatchers.Default) { AppJson.decodeFromString(ApiResponse.serializer(Message.serializer()), res).data }
+    }
 
     suspend fun edit(messageId: String, text: String) = callUnit("POST", "message/edit", obj("messageId" to messageId, "message" to text))
     suspend fun delete(messageId: String) = callUnit("DELETE", "message/delete", obj("messageId" to messageId))
