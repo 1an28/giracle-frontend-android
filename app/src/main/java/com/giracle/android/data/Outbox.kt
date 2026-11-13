@@ -37,7 +37,7 @@ data class OutboxItem(
  * - ネットワークの失敗で送れなかったものだけを入れる (サーバーに断られたものは入れない)
  * - つながったら (WebSocket の接続) 古い順に送る。途中でまたネットワークで失敗したら、そこで止める
  * - サーバーには送信の重複を防ぐ仕組みが無い (S-8) ので、送り直す前に最近の履歴を見て、
- *   自分が同じ本文をその後に送っていれば「届いていた」とみなして送らない
+ *   同じものがその後に自分から送られていれば「届いていた」とみなして送らない ([findDelivered]、#66)
  */
 class Outbox(private val file: File) {
     private val _items = MutableStateFlow(load())
@@ -77,11 +77,15 @@ class Outbox(private val file: File) {
         var done = 0
         val targets = _items.value.filter { if (only != null) it.localId == only else it.error == null }
         val recentByChannel = HashMap<String, List<Message>>()
+        // 一致に使ったメッセージ。1 件の届いていたメッセージを、送信待ちの複数の項目に当てない (#66)
+        val used = HashSet<String>()
         for (item in targets) {
             try {
                 val recent = recentByChannel.getOrPut(item.channelId) { sender.recent(item.channelId) }
-                if (alreadyDelivered(item, recent, sender.myUserId)) {
-                    Log.i(TAG, "already delivered: ${item.localId}")
+                val delivered = findDelivered(item, recent, sender.myUserId, used)
+                if (delivered != null) {
+                    used += delivered.id
+                    Log.i(TAG, "already delivered: ${item.localId} as ${delivered.id}")
                 } else {
                     sender.send(item)
                 }
@@ -118,10 +122,25 @@ class Outbox(private val file: File) {
         /** 端末とサーバーの時計のずれを見込む幅 */
         private const val CLOCK_SLACK_MS = 2 * 60 * 1000L
 
-        /** 送ったが応答が返らなかった場合に、すでに届いているか */
-        fun alreadyDelivered(item: OutboxItem, recent: List<Message>, myUserId: String?): Boolean = recent.any { m ->
-            m.userId == myUserId && m.content == item.text &&
-                (runCatching { Instant.parse(m.createdAt).toEpochMilli() }.getOrNull() ?: 0L) >= item.createdAt - CLOCK_SLACK_MS
+        /**
+         * 送ったが応答が返らなかった場合に、すでに届いているか。届いていれば、そのメッセージを返す (#66)。
+         * - 送信者と返信先が一致し、[used] (ほかの項目の一致に使ったもの) に入っていないこと
+         * - 添付があるものは、添付の ID の組が一致すること。アップロードの ID は一意で、サーバーは添付済みのファイルの再利用を断るので、
+         *   これで確実に判定できる (時刻は見ない)
+         * - 添付が無いものは、添付の無いメッセージで本文が一致し、「最初に送ろうとした時刻 - 2 分」以降に送られていること。
+         *   同じ本文 (「了解」など) を続けて送った場合の取り違えは、送信の重複を防ぐ ID (S-8) が無い限り残る
+         */
+        fun findDelivered(item: OutboxItem, recent: List<Message>, myUserId: String?, used: Set<String> = emptySet()): Message? {
+            val fileIds = item.fileIds.toSet()
+            return recent.firstOrNull { m ->
+                m.id !in used && m.userId == myUserId && m.replyingMessageId == item.replyTo &&
+                    if (fileIds.isNotEmpty()) {
+                        m.files.mapTo(HashSet()) { it.id } == fileIds
+                    } else {
+                        m.files.isEmpty() && m.content == item.text &&
+                            (runCatching { Instant.parse(m.createdAt).toEpochMilli() }.getOrNull() ?: 0L) >= item.createdAt - CLOCK_SLACK_MS
+                    }
+            }
         }
 
         /** 送信の失敗が、送信待ちに入れるべきもの (ネットワークの失敗) か。サーバーに断られたものは入れない */
