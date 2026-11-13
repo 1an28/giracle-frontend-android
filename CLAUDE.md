@@ -57,11 +57,15 @@
    - 最初の確認は、走る中で一番長いものの目安 + 2 分ほど後
 3. **マージの直前に main を取り込む**。`git fetch origin main` して、main が PR の元から進んでいれば
    `git merge origin/main` する (GitHub が競合と言っていなくても。番号の重なりは競合として出ないため)。
-   - DECISIONS.md・RESEARCH.md は追記だけなので、`.gitattributes` の設定で両方の追記が自動で残る
+   - DECISIONS.md・RESEARCH.md は、`.gitattributes` の設定で両方の追記が自動で残る。ただし既存の行を両方が書き換えていても、
+     競合にならず新旧が並んで残る。取り込んだ後 `git diff ORIG_HEAD -- docs/DECISIONS.md docs/RESEARCH.md` で、追記以外が無いか見る
+   - 自分の枝に `.gitattributes` の設定がまだ無い (D-052 より前に分かれた) ときは、union が効かず普通の競合になる。手で両方残す
    - それ以外の競合 (ROADMAP.md など) は手で直す。追記どうしは両方残し、書き換えどうしは両方の意図を合わせる
    - 判断の番号が重なっていたら、自分の方を付け直す (本文・コミット以外の文書・PR の説明の参照も)
    - 取り込んで push したら 2. に戻り、CI が通るのを確かめる
-4. **マージ**: `expectedHeadSha` に CI が通ったコミットを渡してマージする。その間に main が進んでいたら 3. に戻る。
+4. **マージ**: 直前にもう一度 `git fetch origin main` し、3. で取り込んだ main から進んでいないことを確かめる (進んでいたら 3. に戻る)。
+   GitHub の MCP の `merge_pull_request` に、CI が通ったコミットを `expectedHeadSha` として渡してマージする
+   (これは PR の head しか比べず、main が進んだかは見ない)。マージ後、main の docs-check が通ったことを見てから終える。
 
 ## 書き方
 
