@@ -43,7 +43,7 @@ status=0
 # 失敗したときの手がかりを、成果物を開かなくても CI のログで読めるように出す
 show_clues() {
   echo "::group::logcat (アプリ・起動・クラッシュに関係する行)"
-  grep -E "GiracleE2E|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
+  grep -E "GiracleE2E|GiracleNav|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
   echo "::endgroup::"
   # アプリのプロセス (途中で作り直されたものも含む) の記録をすべて出す。プッシュ受信など、裏で起きたことを追うため
   pids=$(grep -oE "Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | grep -oE "[0-9]+" | tr '\n' '|' | sed 's/|$//')

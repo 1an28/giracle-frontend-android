@@ -133,7 +133,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
         // 共有から開かれたときは、送り先を選んでもらうためホームのままにする
         if (PendingShare.content != null) return@LaunchedEffect
         if (restoredNav) return@LaunchedEffect
-        graph.prefs.lastChannelId?.let { if (pendingOpen.value == null) nav.openChannel(it) }
+        graph.prefs.lastChannelId?.let { if (pendingOpen.value == null) { android.util.Log.i("GiracleNav", "前回のチャンネルを開く"); nav.openChannel(it) } }
     }
     // 共有を受け取ったら、送り先のチャンネルを選べるようホームに戻る (D-020)
     val share = PendingShare.content
@@ -145,6 +145,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     val pending = pendingOpen.value
     LaunchedEffect(pending) {
         if (pending != null) {
+            android.util.Log.i("GiracleNav", "通知・ショートカットから開く")
             nav.openChannel(pending.first, pending.second)
             pendingOpen.value = null
         }
@@ -281,7 +282,7 @@ private fun NoticeBanner(flow: kotlinx.coroutines.flow.SharedFlow<InAppNotice>, 
         Surface(
             Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(8.dp)
                 .clickable {
-                    n.channelId?.let { nav.openChannel(it, n.messageId) }
+                    n.channelId?.let { android.util.Log.i("GiracleNav", "画面内の通知から開く"); nav.openChannel(it, n.messageId) }
                     current = null
                 },
             tonalElevation = 6.dp, shadowElevation = 6.dp, shape = MaterialTheme.shapes.medium,

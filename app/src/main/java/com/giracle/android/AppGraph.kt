@@ -108,6 +108,10 @@ class AppGraph(context: Context) {
             _phase.value = AppPhase.SignedOut
         }
         scope.launch {
+            // ログイン状態の移り変わりを記録する (e2e の失敗の手がかり)
+            _phase.collect { android.util.Log.i("GiracleNav", "phase $it") }
+        }
+        scope.launch {
             // つながったら送信待ちを送る (#30)
             ws.state.collect { if (it == com.giracle.android.data.net.WsClient.State.Connected) flushOutbox() }
         }

@@ -364,7 +364,7 @@ class ReleaseAppTest {
     }
 
     private fun wait(sel: BySelector, timeoutMs: Long, what: String): UiObject2 =
-        waitDismissingSystemDialogs(sel, timeoutMs) ?: run {
+        waitDismissingSystemDialogs(sel, timeoutMs.also { Log.i(TAG, "待つ: $what") }) ?: run {
             assertAlive("「$what」を待つ間")
             shot("missing")
             fail("「$what」が ${timeoutMs / 1000} 秒以内に出ない"); error("unreachable")
@@ -385,7 +385,7 @@ class ReleaseAppTest {
             // 出ていたら許可して閉じる
             device.findObject(By.res(Pattern.compile(".*:id/permission_allow_button")))?.let {
                 if (device.findObject(By.textContains("notifications")) != null || device.findObject(By.textContains("通知")) != null) {
-                    Log.w(TAG, "遅れて出た通知の許可の確認を閉じた")
+                    Log.w(TAG, "遅れて出た通知の許可の確認を閉じた (" + device.findObject(By.res(Pattern.compile(".*:id/permission_message")))?.text + ")")
                     it.click()
                 }
             }
