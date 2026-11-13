@@ -1,9 +1,9 @@
 """他社チャットアプリのストアレビュー (低評価) の傾向を見るための、粗いキーワード分類と標本の抽出 (D-045)。
 
 使うデータ (どちらも GitHub 上の公開リポジトリ。このリポジトリには入れない):
-  1. Telegram: https://github.com/Mad03633/Telegram-App-Reviews-Sentiment-Analysis の assets/Telegram.csv
+  1. Telegram: https://github.com/Mad03633/Telegram-App-Reviews-Sentiment-Analysis の assets/Telegram.csv (コミット 7c6ec55)
      (Google Play、10,000 件、2021-09-21〜2022-03-17、版 8.1〜8.6)
-  2. WhatsApp: https://github.com/RalphSaridar369/whatsapp-reviews-insights の app/src/data/reviews.json
+  2. WhatsApp: https://github.com/RalphSaridar369/whatsapp-reviews-insights の app/src/data/reviews.json (コミット 79d542b)
      (3,927 件。取得時期は書かれていない)
 使い方 (データは自分の作業場所に取ってくる):
   python3 -I review_keywords.py Telegram.csv reviews.json sample.json

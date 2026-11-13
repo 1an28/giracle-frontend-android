@@ -5,7 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -45,5 +48,29 @@ class TouchTargetCheckTest {
         }
         val found = rule.smallTouchTargets(rule.density)
         assertEquals(listOf("small40: 40x40dp (ok48 と近い)", "small44: 44x44dp (ok48 と近い)"), found)
+    }
+
+    /** ダイアログの中の小さい要素を、下に隠れた画面の要素と比べない (ウィンドウごとに比べる) */
+    @Test fun windowsAreComparedSeparately() {
+        rule.setContent {
+            Column { repeat(10) { i -> Box(Modifier.fillMaxWidth().height(80.dp).clickable { }.testTag("bg$i")) } }
+            androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+                Box(Modifier.size(200.dp).background(Color.White)) {
+                    Box(Modifier.padding(40.dp).size(30.dp).background(Color.Gray).clickable { }.testTag("dialogSmall"))
+                }
+            }
+        }
+        assertEquals(emptyList<String>(), rule.smallTouchTargets(rule.density))
+    }
+
+    /** 一覧の端で一部だけ見えている行を、小さい要素として数えない (切り取る前の大きさで判定する) */
+    @Test fun clippedRowsAreNotSmall() {
+        rule.setContent {
+            // 4 行目は 30dp だけ見える
+            LazyColumn(Modifier.height(270.dp)) {
+                items(10) { i -> Box(Modifier.fillMaxWidth().height(80.dp).clickable { }.testTag("row$i")) }
+            }
+        }
+        assertEquals(emptyList<String>(), rule.smallTouchTargets(rule.density))
     }
 }
