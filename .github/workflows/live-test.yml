@@ -43,13 +43,8 @@ jobs:
           GIRACLE_TEST_SERVER: http://localhost:3333
         run: ./gradlew :app:testDebugUnitTest
       - name: Check live tests were not skipped
-        run: |
-          set -e
-          for c in LiveServerTest UiScreenshotTest; do
-            f=app/build/test-results/testDebugUnitTest/TEST-com.giracle.android.$c.xml
-            grep -o '<testsuite [^>]*>' "$f"
-            grep -q 'skipped="0"' "$f" || { echo "$c にスキップされたテストがある" >&2; exit 1; }
-          done
+        # 手元でも同じ確認を流せるよう、スクリプトにしてある (docs/DEVELOPMENT.md)
+        run: .github/scripts/check-live-results.sh
       - uses: actions/upload-artifact@v7
         if: always()
         with:

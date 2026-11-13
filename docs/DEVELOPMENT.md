@@ -6,6 +6,16 @@
 - Android SDK (platforms;android-37.0, build-tools;37.0.0)。`local.properties` に `sdk.dir=...`
 - ローカル検証用: [Bun](https://bun.sh) と Node.js (バックエンドと Web 版を動かす)
 
+## Claude のクラウド環境での準備
+
+- 環境は `giracle-frontend-android` を使う。`Default` の環境では `dl.google.com` (Android SDK と Google の Maven) が塞がれていて、ビルドできない
+  (`Default` で始めてしまったら、セッションの途中で `giracle-frontend-android` のネットワークに切り替えられる。持ち主の承認が 1 回要る)。
+- Android SDK が無ければ入れる:
+  `commandlinetools-linux-*_latest.zip` を `dl.google.com/android/repository/` から取り、`sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"`、
+  `local.properties` に `sdk.dir=...`。
+- Maven Central が 429 (Too Many Requests) を返すことがある。そのときは `~/.gradle/init.d/` に、
+  `https://maven-central.storage-download.googleapis.com/maven2/` を先に見る init スクリプトを置く (リポジトリには入れない。2026-11-13 に確認)。
+
 ## ビルド
 
 ```bash
@@ -43,6 +53,7 @@ devtools/seed-demo.sh           # デモデータ (admin / password123 を先に
 ```bash
 ./gradlew :app:testDebugUnitTest                                   # 単体テストのみ
 GIRACLE_TEST_SERVER=http://localhost:3333 ./gradlew :app:testDebugUnitTest   # 実サーバー結合テストと画面描画も
+.github/scripts/check-live-results.sh                              # 上の結果にスキップが無いか (CI と同じ確認)
 ```
 
 - `LiveServerTest`: 管理者 (`GIRACLE_TEST_ADMIN_USER` / `GIRACLE_TEST_ADMIN_PASS`、既定 admin / password123) で
