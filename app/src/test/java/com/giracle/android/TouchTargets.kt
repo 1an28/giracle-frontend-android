@@ -19,8 +19,18 @@ import androidx.compose.ui.unit.Density
  * 広げた範囲どうしだけが重なる場合は取りこぼす。
  * Compose の Accessibility Test Framework の検査は、Robolectric では Compose の中身が見えず働かない (D-045) ので、
  * 意味情報 (semantics) を直接たどる。戻り値は足りない要素の説明 (見つからなければ空)。
+ *
+ * 数えないもの (#68、D-055):
+ * - 文の中のリンク (本文の URL・メンションなど)。WCAG 2.2 の 2.5.8 と 2.5.5 の例外「Inline」(文の中の対象、
+ *   または大きさが周りの文字の行の高さで決まるもの) に当たる。Material と Android の文書にはこの例外の記載が無い
+ * - [knownShortfalls] に挙げた、直すと決めて Issue にしたが、まだ直していないもの。足りないことは変わらないので、
+ *   戻り値には「既知」と分かる形で残す ([KNOWN_PREFIX])
  */
-fun SemanticsNodeInteractionsProvider.smallTouchTargets(density: Density, minDp: Float = 48f): List<String> {
+fun SemanticsNodeInteractionsProvider.smallTouchTargets(
+    density: Density,
+    minDp: Float = 48f,
+    knownShortfalls: List<KnownShortfall> = KNOWN_SHORTFALLS,
+): List<String> {
     val minPx = minDp * density.density
 
     fun name(n: SemanticsNode) = n.config.getOrNull(SemanticsProperties.TestTag)
@@ -72,10 +82,33 @@ fun SemanticsNodeInteractionsProvider.smallTouchTargets(density: Density, minDp:
                 o.id != n.id && !related(n, o) && !o.boundsInRoot.isEmpty && o.boundsInRoot.overlaps(expanded) &&
                     shields.none { sh -> !isAncestor(sh, o) }
             }
-            if (clash != null) {
-                out += "${name(n)}: ${"%.0f".format(w0 / density.density)}x${"%.0f".format(h0 / density.density)}dp (${name(clash)} と近い)"
+            if (clash != null && !isInlineLink(n)) {
+                val known = n.config.getOrNull(SemanticsProperties.TestTag)?.let { tag -> knownShortfalls.firstOrNull { tag.startsWith(it.tagPrefix) } }
+                out += (known?.let { "$KNOWN_PREFIX(${it.issue}) " } ?: "") +
+                    "${name(n)}: ${"%.0f".format(w0 / density.density)}x${"%.0f".format(h0 / density.density)}dp (${name(clash)} と近い)"
             }
         }
     }
     return out
 }
+
+/** 戻り値の先頭にこれが付くものは、Issue にした既知の不足 (CI を失敗にしない) */
+const val KNOWN_PREFIX = "既知"
+
+/** 押せる範囲が足りないと分かっていて、Issue で直し方を決めるもの。testTag の先頭で見分ける */
+data class KnownShortfall(val tagPrefix: String, val issue: String, val reason: String)
+
+val KNOWN_SHORTFALLS = listOf(
+    // 続けて送られた 1 行のメッセージの行は 23dp で、上下の行と接する。Material 3 の Lists の仕様は一覧の項目にも 48dp を求めていて、
+    // 外す根拠は無かった (D-055)。直すには行の高さ (1 画面に見える量) を変えることになるので、見た目の作り直しと一緒に決める
+    KnownShortfall("channel.message:", "#75", "メッセージの行 (長押しでメニュー)"),
+)
+
+/**
+ * 文の中のリンク (`LinkAnnotation`) の意味情報か。Compose はリンクごとに押せる子を作り、テスト用の印 `LinkTestMarker` を付ける
+ * (androidx の `TextLinkScope.kt`)。印は内部向けで直接参照できないので、名前で見る。
+ * 印が無い作りに変わった場合に備え、「自分は文字を持たず、親が文字を持つ押せる子」もリンクとみなす。
+ */
+private fun isInlineLink(n: SemanticsNode): Boolean =
+    n.config.any { it.key.name == "LinkTestMarker" } ||
+        (n.config.getOrNull(SemanticsProperties.Text) == null && n.parent?.config?.getOrNull(SemanticsProperties.Text) != null)

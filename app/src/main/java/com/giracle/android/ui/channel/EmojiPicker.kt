@@ -113,12 +113,12 @@ fun EmojiPicker(modifier: Modifier = Modifier, onPick: (String) -> Unit) {
                 }
             }
         }
-        LazyVerticalGrid(GridCells.Adaptive(44.dp), state = gridState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+        LazyVerticalGrid(GridCells.Adaptive(48.dp), state = gridState, modifier = Modifier.fillMaxWidth().weight(1f)) {
             items(items, span = { if (it is PickItem.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) }, contentType = { it::class }) { it ->
                 when (it) {
                     is PickItem.Header -> Text(it.title, Modifier.padding(8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    is PickItem.Uni -> Box(Modifier.size(44.dp).testTag(TestTags.emojiPickerItem(it.code)).clickable { pick(it.code) }, contentAlignment = Alignment.Center) { Text(it.char, fontSize = 26.sp) }
-                    is PickItem.Custom -> Box(Modifier.size(44.dp).testTag(TestTags.emojiPickerItem(it.code)).clickable { pick(it.code) }, contentAlignment = Alignment.Center) {
+                    is PickItem.Uni -> Box(Modifier.size(48.dp).testTag(TestTags.emojiPickerItem(it.code)).clickable { pick(it.code) }, contentAlignment = Alignment.Center) { Text(it.char, fontSize = 26.sp) }
+                    is PickItem.Custom -> Box(Modifier.size(48.dp).testTag(TestTags.emojiPickerItem(it.code)).clickable { pick(it.code) }, contentAlignment = Alignment.Center) {
                         AsyncImage(model = graph.api.customEmojiUrl(it.code), contentDescription = it.code, modifier = Modifier.size(30.dp))
                     }
                 }
