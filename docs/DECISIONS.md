@@ -899,3 +899,32 @@
   - 一時ファイル名を毎回変えるだけ: 混ざりは防げるが、古い中身が後から勝つ順番の問題が残る
 - **ついでに直ったこと**: `AppGraph` の `snapshotFile` が `init` より後ろで宣言され、`init` で起こした処理 (`Dispatchers.Default`) から
   初期化前に読まれうる並びだった (読めないと、前回の内容を出さずに黙って進む)。宣言を `init` の前に移した。
+
+## D-055 押せる範囲が 48dp に足りない要素を直し、残りを CI で失敗にする (#68)
+
+- **判断**: live-test の検査 (D-045 の `TouchTargets.kt`) が出していた 122 種類を仕分け、直せるものを直したうえで、
+  足りない要素が 1 件でもあれば live-test を失敗にした。直し方を Issue にしたもの (既知の不足) だけは、名前を出したまま失敗にしない。
+- **仕分け** (main の live-test 43450484115 のログ):
+  - 絵文字の枠 (44dp)・リアクション (46x28dp)・最新へ (40dp): 直した。リアクションと最新へは見た目を変えず、押す処理を 48dp の箱に付けた
+    (`PressArea`・`SmallFab48`)。Material の SmallFloatingActionButton は押せる範囲を広げないので、一覧の上に浮かべると見た目の外は下の行が取る。
+    見た目の変化: リアクションのあるメッセージは、行が 10dp 高くなる (見た目の下側。次の行と取り合わないために要る。上側は自分の本文に 6dp 重ね、本文との間は前と同じ 4dp)。
+    リアクションどうしの横の間は 4dp → 約 6dp (幅 46dp の見た目を 48dp の箱の中央に置くため)、2 行に折り返したときの縦の間は 4dp → 20dp。
+    押したときの波紋は、押した位置ではなく少しずれた位置 (リアクションで縦に最大 10dp、ボタンで 4dp) から広がる (箱と見た目の座標の差。見た目の形の中に収まるので直さない)。
+  - 本文の中のリンク (`(名前なし)` の 2 件): 数えない。WCAG 2.2 の 2.5.8 (AA) と 2.5.5 (AAA) の例外「Inline」
+    (2.5.8: "The target is in a sentence or its size is otherwise constrained by the line-height of non-target text"。w3.org の原文で確かめた) に当たる。
+    Material・Android の文書にはこの例外は無く、WCAG はウェブの基準なので、ほかの例外より根拠は弱い。直すと本文の行の間が広がる。
+  - 1 ペインに切り替える確認の 3 件 (送信 38dp など): テストの作りのせい。1024x768 の画面に 400x800 を強制し、
+    `DeviceConfigurationOverride.ForcedSize` が密度を 0.96 倍に下げていた (40dp × 0.96 ≒ 38dp で、数字が合う)。高さを 760dp にした。
+  - メッセージの行 (23〜44dp の高さ。件数の大半): **外さない**。Issue は「一覧の項目全体が押せるものは問題になりにくい (Material の一覧の項目と同じ扱い)」
+    と推測していたが、原文で確かめると根拠は無かった:
+    - Material 3 の Lists の仕様 (m3.material.io/components/lists/specs。JavaScript で描画して読んだ、2026-11-13) の Accessibility に
+      "Target size must be at least 48x48dp"
+    - Material 2 (m2.material.io/design/usability/accessibility) と Material 3 (m3.material.io/foundations/designing/structure) の touch targets は 48x48dp で、一覧の例外は無い
+    - Android「Make apps more accessible」も 48dp で、例外の記載は無い
+    - Accessibility Test Framework の `TouchTargetSizeCheck` (GitHub の原文) にも一覧の項目の例外は無い
+      (48dp 以上の押せる祖先がある・スクロールの端で切れているなどの場合に、誤りを警告へ下げるだけ)
+    - WCAG 2.2 の例外 (Spacing・Equivalent・Inline・User Agent Control・Essential) のどれにも当たらない
+    直すには行の高さを変え、1 画面に見えるメッセージの量が変わる。見た目の作り直し (D-046) の順番に合わせ、#75 で選択肢として扱う。
+    それまでは既知の不足 (`KNOWN_SHORTFALLS`) として、CI のログに `TOUCH-TARGET-KNOWN` で出し続ける。
+- **既知の不足の決まり**: 足すときは Issue を作り、`KNOWN_SHORTFALLS` に Issue の番号と理由を書く。testTag の先頭で見分けるので、testTag の無い要素は足せない (直すしかない)。
+- **確かめていないこと**: 実機で押し間違いが減ったか。見た目が変わっていないことは、CI の画面の画像を見ていない (この環境から成果物を取れない) ので、作りから判断した。
