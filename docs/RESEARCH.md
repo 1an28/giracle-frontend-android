@@ -65,7 +65,7 @@
 - 確かめたこと (環境の設定を読む道具 `get_environment` で): このセッションの環境は「Default」(制限あり。curl も CONNECT 403)。制限なしは別の環境「giracle-frontend-android」。
   セッションをどの環境で始めたかで、開けるサイトが変わる
 - Test Lab の終了: 検索結果に出た公式ページ (firebase.google.com/docs/test-lab/migrate) の見出しが
-  「Firebase Test Lab is deprecated and will be fully shut down on September 30, 2027」。本文は開けていない (#69 で確かめる)
+  「Firebase Test Lab is deprecated and will be fully shut down on September 30, 2027」。このセッションでは本文を開けなかった。#69 (#78) が原文で確かめた (下の項)
 ## 2026-11-14
 
 ### 要約で読んだ出典を、原文で読み直す (#69)
