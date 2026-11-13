@@ -503,3 +503,26 @@
 - **判断**: `ConnectivityManager.registerDefaultNetworkCallback` で回線がつながったことを受け、`nudge()` を呼ぶ
   (`ACCESS_NETWORK_STATE` を宣言。利用者に尋ねない権限)。切断中でなければ何もしない。
 - **確かめていないこと**: どれだけ早くなったか (e2e の送信待ちの確認で、電波を戻してから届くまでの時間をログに出すと分かる)。
+
+## D-035 Claude Code の運用: レビュー役・止まらないルール・引き継ぎメモ・性能のスキル
+
+持ち主の依頼で、Claude Code の運用を次のように変えた。
+
+- **レビュー役** (`.claude/agents/reviewer.md`): マージ前に差分と要件を渡し、正しさと要件に関わる問題だけを指摘させる。
+  好みの問題・起こりえないケースへの対策・差分と関係のない既存の問題は指摘させない (指摘を直す手間を、持ち主の目的に合うものだけにするため)。
+  コードは変更させない (道具は読む・探す・Bash だけにした)。
+- **止まらないルール**: 一つの作業が終わっても報告で止めず、次に価値のある作業を探して続ける。Web 版と同等以上の機能・軽さ・安定性を幅広く進める。
+- **ROADMAP を引き継ぎメモにした**: 「やる順番」の欄を外し、友人の返事待ち・持ち主にしかできないこと・次のセッションへ、の 3 つにした。
+  以前の「やる順番」にあった項目は、返事待ちの条件付きのもの (#7・S-1) を返事待ちの欄へ、候補と定期的に見るものを「次のセッションへ」へ移した。
+- **スキルの取り込み**: [chrisbanes/skills](https://github.com/chrisbanes/skills) (Apache License 2.0。コミット `b684174`) から、
+  次の 3 つを変更せずに `.claude/skills/` へ取り込み、ライセンス全文を `.claude/skills/LICENSE-chrisbanes-skills` に置いた。
+  - `compose-performance`: 再コンポーズ・安定性・フレームごとの State の読み方を扱う。このアプリはパフォーマンスを重視している (D-001) ため、中心になる
+  - `compose-state-and-effects`: 状態の持ち主と副作用の寿命。余計な再コンポーズや、画面を離れても動き続ける処理の原因になりやすい。`compose-performance` からも参照されている
+  - `kotlin-concurrency-and-flow`: コルーチンの持ち主と寿命・StateFlow / SharedFlow の使い分け。`WsClient` や送信待ち (D-029) のように、
+    裏で動く処理と画面への流れが多いので、無駄な処理・取り消し漏れを防ぐのに使う
+- **取り込まなかったもの**: `android-benchmark-comparison` は実機の設定どうしを比べるためのもので、実機の無いこの環境では使えない。
+  `compose-animations`・`compose-component-design`・`compose-focus-navigation`・`compose-ui-testing-patterns`・`kotlin-api-design`・
+  `kotlin-control-flow` は性能が主題ではない。`gradle-run` は独自の手順で Gradle を動かすもので、docs/DEVELOPMENT.md の手順と食い違う。
+  残り (`deliver-spec`・`run-github-project` など) は作業の進め方のスキルで、CLAUDE.md の進め方と重なる。
+- 取り込んだスキルの本文には、取り込んでいないスキル (`gradle-run` など) へのリンクがある。本文は変えず、読むときの注意を `.claude/skills/README.md` に書いた。
+- **確かめていないこと**: レビュー役とスキルが、実際のセッションで期待どおりに呼ばれ、指摘や判断の質が上がるか。
