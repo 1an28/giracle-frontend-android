@@ -555,10 +555,12 @@ class ChatStore(
     // 操作
     // ------------------------------------------------------------------
 
-    suspend fun send(channelId: String, text: String, fileIds: List<String>, replyTo: String?) {
+    /** 送ったメッセージを返す (画面が、送ったものを見える位置へ送るため。#58) */
+    suspend fun send(channelId: String, text: String, fileIds: List<String>, replyTo: String?): Message {
         val msg = api.send(channelId, text, fileIds, replyTo)
         // WS より先に応答が来た場合でも即座に表示する (重複は addMessage で除く)
         addMessage(msg)
+        return msg
     }
 
     suspend fun toggleReaction(message: Message, emojiCode: String) {

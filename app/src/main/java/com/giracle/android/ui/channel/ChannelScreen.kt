@@ -268,6 +268,36 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         if (newestId != null && listState.firstVisibleItemIndex <= 1 && history.atEnd) listState.animateScrollToItem(0)
     }
 
+    // ---- 自分の送信: 読んでいる位置に関係なく、送ったものが見えるところへ送る (#58、D-051) ----
+    // Element X と同じ考え方 (docs/RESEARCH.md)。送ったものが画面の外にあると、送れたかを確かめるためにスクロールし直すことになる。
+    // 一覧に載るのを待ってから動かす。載る前に動かすと、LazyColumn が今の先頭の行 (キー) に位置を合わせ直し、送ったものが画面の外に残る
+    var sentId by remember(channelId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(sentId, history.version) {
+        val id = sentId ?: return@LaunchedEffect
+        val i = history.messages.indexOfFirst { it.id == id }
+        if (i < 0) return@LaunchedEffect
+        sentId = null
+        // 一覧の先頭に「新しい側を読み込み中」の行があると、位置が 1 つずれる
+        val target = i + (if (history.atEnd) 0 else 1)
+        // 遠ければ一気に、近ければ動かして (Element X と同じく 10 行を境にする)
+        if (kotlin.math.abs(listState.firstVisibleItemIndex - target) > 10) listState.scrollToItem(target)
+        else listState.animateScrollToItem(target)
+    }
+    val onSent: (String) -> Unit = { id ->
+        sentId = id
+        // 古い側を読んでいて最新側を読み込んでいないと、送ったものは一覧に載らない (addMessage が足さない)。最新を読み込み直す
+        if (!store.history(channelId).value.atEnd) scope.launch {
+            try {
+                store.jumpToLatest(channelId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                sentId = null
+                ctx.toast(e.userMessage())
+            }
+        }
+    }
+
     // メンションされたメッセージを表示したら通知を既読にする (Web 版 MentionReadWrapper)
     LaunchedEffect(channelId, inbox, history.version) {
         val ids = history.messages.mapTo(HashSet()) { it.id }
@@ -380,7 +410,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
             }
             if (joined) {
                 Box(Modifier.navigationBarsPadding()) {
-                    Composer(channelId, replyTo, { replyTo = null }, editing, { editing = null })
+                    Composer(channelId, replyTo, { replyTo = null }, editing, { editing = null }, onSent)
                 }
             } else if (channel != null) {
                 Surface(tonalElevation = 2.dp) {
