@@ -9,6 +9,9 @@ runs:
     - uses: oven-sh/setup-bun@v2
     - name: Start local server
       shell: bash
+      # エミュレータから LAN のアドレス (10.0.2.2) でつなぐ確認 (#37、#42) のため、その Origin も WebSocket に許可する
+      env:
+        ORIGIN: http://localhost:3333,http://10.0.2.2:3333
       run: devtools/start-local-stack.sh
     - name: Create admin user
       shell: bash

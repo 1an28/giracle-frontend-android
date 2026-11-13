@@ -42,6 +42,10 @@ import androidx.compose.ui.unit.dp
 import com.giracle.android.data.model.ServerConfig
 import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.userMessage
+import com.giracle.android.ui.common.rememberLocalNetworkGate
+import com.giracle.android.ui.common.openAppSettings
+import com.giracle.android.data.net.LocalNetwork
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 
 /** サーバー指定 → ログイン / 新規登録 (Web 版 routes/auth.tsx 相当) */
@@ -58,13 +62,24 @@ fun LoginScreen() {
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var invite by rememberSaveable { mutableStateOf("") }
+    var needLocalPermission by rememberSaveable { mutableStateOf(false) }
+    val gate = rememberLocalNetworkGate()
+    val ctx = LocalContext.current
 
     fun probe() {
         error = null
         if (!graph.setServer(url, direct)) { error = "URL の形式が正しくありません"; return }
         busy = true
+        needLocalPermission = false
         scope.launch {
             try {
+                // LAN 内のサーバーなら、Android 17 のローカルネットワーク権限を先に求める (#42、D-031)
+                if (!gate.ensure(graph.endpoint.origin.host)) {
+                    server = null
+                    needLocalPermission = true
+                    error = LocalNetwork.DENIED_MESSAGE
+                    return@launch
+                }
                 server = graph.probeServer()
             } catch (e: Exception) {
                 server = null
@@ -98,6 +113,9 @@ fun LoginScreen() {
             }
             if (busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (needLocalPermission) {
+                TextButton(onClick = { openAppSettings(ctx) }) { Text("アプリの設定を開く") }
+            }
 
             val s = server
             if (s != null) {

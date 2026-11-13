@@ -43,6 +43,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
 import java.io.File
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.ForcedSize
 
 /**
  * 実サーバーにつないだ実際の画面を描画し、PNG に保存する (目視確認用)。
@@ -101,13 +103,18 @@ class UiScreenshotTest {
         }
     }
 
-    private fun startApp() {
+    private fun startApp(size: androidx.compose.runtime.State<androidx.compose.ui.unit.DpSize>? = null) {
         val graph = ApplicationProvider.getApplicationContext<GiracleApp>().graph
         graph.setServer(server!!, false)
         graph.prefs.lastChannelId = null // 前回のチャンネルを自動で開かないようにする
         graph.setForeground(true) // Robolectric では前面への切り替えが届かないことがあるので、明示する
         runBlocking { graph.signIn(adminUser, adminPass) }
-        rule.setContent { Root(graph, mutableStateOf(null)) }
+        rule.setContent {
+            if (size == null) Root(graph, mutableStateOf(null))
+            else androidx.compose.ui.test.DeviceConfigurationOverride(androidx.compose.ui.test.DeviceConfigurationOverride.ForcedSize(size.value)) {
+                Root(graph, mutableStateOf(null))
+            }
+        }
     }
 
     private fun shot(name: String) {
@@ -206,6 +213,39 @@ class UiScreenshotTest {
         assertTrue(exists(hasTestTag(TestTags.SCREEN_HOME)))
         shot("11_tablet_channel")
         back(TestTags.TWO_PANE_EMPTY)
+    }
+
+    /**
+     * 1 ペインと 2 ペインが切り替わっても (回転・折りたたみの開閉)、チャンネルの表示位置が保たれる (#39、D-032)。
+     * 画面の幅だけを変えて、同じ画面のまま切り替える。
+     */
+    @Test @Config(qualifiers = "w1024dp-h768dp-mdpi") fun twoPaneKeepsScrollPosition() {
+        assumeTrue(server != null)
+        val ch = newChannel("pane")
+        val ids = (1..40).map { send(ch, "表示位置の確認 $it") }
+        val old = ids[4] // 古いほう。開いた直後 (最新が見える位置) には描かれない
+        val size = mutableStateOf(androidx.compose.ui.unit.DpSize(1024.dp, 768.dp))
+
+        startApp(size)
+        click(TestTags.homeChannel(ch))
+        waitTag(TestTags.message(ids.last()))
+        assertTrue("開いた直後に古いメッセージが描かれている (確認の前提が崩れた)", !exists(hasTestTag(TestTags.message(old))))
+        rule.onNodeWithTag(TestTags.CHANNEL_MESSAGES).performScrollToNode(hasTestTag(TestTags.message(old)))
+        waitTag(TestTags.message(old)); shot("12_pane_wide_scrolled")
+
+        // 狭くする (1 ペイン): チャンネルだけが出て、表示位置はそのまま
+        size.value = androidx.compose.ui.unit.DpSize(400.dp, 800.dp)
+        rule.waitForIdle()
+        assertTrue("1 ペインに切り替えるとホームが出たまま", !exists(hasTestTag(TestTags.SCREEN_HOME)))
+        assertTrue("1 ペインに切り替えると表示位置が戻った", exists(hasTestTag(TestTags.message(old))))
+        shot("13_pane_narrow_kept")
+
+        // 広げ直す (2 ペイン): ホームが並び、表示位置はそのまま
+        size.value = androidx.compose.ui.unit.DpSize(1024.dp, 768.dp)
+        rule.waitForIdle()
+        waitTag(TestTags.SCREEN_HOME)
+        assertTrue("2 ペインに戻すと表示位置が戻った", exists(hasTestTag(TestTags.message(old))))
+        shot("14_pane_wide_kept")
     }
 
     @Test fun login() {

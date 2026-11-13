@@ -52,4 +52,49 @@ class Navigator {
     }
 }
 
+/**
+ * 画面の履歴を、プロセスが終わっても戻せるように文字列にする (D-032)。
+ * 形式は「種類\t引数1\t引数2」。null は空文字で表す。
+ */
+internal object NavigatorCodec {
+    fun encode(s: Screen): String = when (s) {
+        Screen.Home -> "home"
+        is Screen.Channel -> "channel\t${s.channelId}\t${s.messageId.orEmpty()}"
+        is Screen.ChannelSettings -> "channelSettings\t${s.channelId}"
+        Screen.Inbox -> "inbox"
+        is Screen.Search -> "search\t${s.channelId.orEmpty()}\t${s.userId.orEmpty()}"
+        Screen.Members -> "members"
+        Screen.ChannelBrowser -> "channelBrowser"
+        Screen.Settings -> "settings"
+        Screen.ManageServer -> "manageServer"
+    }
+
+    fun decode(v: String): Screen? {
+        val p = v.split('\t')
+        fun arg(i: Int) = p.getOrNull(i)?.takeIf { it.isNotEmpty() }
+        return when (p[0]) {
+            "home" -> Screen.Home
+            "channel" -> arg(1)?.let { Screen.Channel(it, arg(2)) }
+            "channelSettings" -> arg(1)?.let { Screen.ChannelSettings(it) }
+            "inbox" -> Screen.Inbox
+            "search" -> Screen.Search(arg(1), arg(2))
+            "members" -> Screen.Members
+            "channelBrowser" -> Screen.ChannelBrowser
+            "settings" -> Screen.Settings
+            "manageServer" -> Screen.ManageServer
+            else -> null
+        }
+    }
+
+    val saver = androidx.compose.runtime.saveable.Saver<Navigator, ArrayList<String>>(
+        save = { nav -> ArrayList(nav.stack.map(::encode)) },
+        restore = { list ->
+            Navigator().apply {
+                val screens = list.mapNotNull(::decode).filter { it != Screen.Home }
+                stack.addAll(screens)
+            }
+        },
+    )
+}
+
 val LocalNavigator = staticCompositionLocalOf<Navigator> { error("Navigator not provided") }

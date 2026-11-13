@@ -224,5 +224,23 @@ class LiveServerTest {
         assertTrue("古いパスワードでログインできてしまう", old.isFailure)
     }
 
+    /** 管理者によるユーザーの削除 (#43): 削除済みになり、ログイン中のセッションも使えなくなる */
+    @Test fun adminDeletesUser() = runBlocking {
+        assumeTrue("GIRACLE_TEST_SERVER 未指定のためスキップ", server != null)
+        val suffix = System.currentTimeMillis().toString().takeLast(6)
+        val admin = client("admin-del")
+        val adminId = admin.api.signIn(System.getenv("GIRACLE_TEST_ADMIN_USER") ?: "admin", System.getenv("GIRACLE_TEST_ADMIN_PASS") ?: "password123").userId
+        admin.api.createInvite("del$suffix", 1)
+        val d = client("dave")
+        d.api.signUp("dave$suffix", "pass1234", "del$suffix")
+        val dId = d.api.signIn("dave$suffix", "pass1234").userId
+        admin.api.deleteUser(dId)
+        assertTrue("削除済みにならない", admin.api.userInfo(dId).isDeleted)
+        assertTrue("削除した人のセッションが使えてしまう", runCatching { d.api.verifyToken() }.isFailure)
+        assertTrue("削除した人がログインできてしまう", runCatching { client("dave2").api.signIn("dave$suffix", "pass1234") }.isFailure)
+        // 自分は消せない (サーバーが断る)
+        assertTrue("自分を削除できてしまう", runCatching { admin.api.deleteUser(adminId) }.isFailure)
+    }
+
     @Suppress("unused") private fun dummy(m: Message) = m
 }

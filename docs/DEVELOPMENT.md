@@ -66,6 +66,10 @@ devtools/start-local-stack.sh   # 管理者 admin / password123 も作ってお�
 .github/scripts/e2e-run.sh      # 結果は e2e-out/ (画面・logcat・crash バッファ)
 ```
 
+- CI は API 35 と API 37 (targetSdk と同じ Android 17) の 2 つのエミュレータで動かす。
+- 端末の通信網を通る確認 (機内モードでの送信待ち #37、Android 17 のローカルネットワーク権限 #42) は、
+  `adb reverse` の `localhost` ではなく `http://10.0.2.2:3333` (エミュレータから見たランナー) を使う。
+  そのため `local-server` はバックエンドの `CORS_ORIGIN` に `http://10.0.2.2:3333` も入れる。`LAN_SERVER=` (空) で飛ばせる。
 - 手順は `e2e/src/main/java/com/giracle/e2e/ReleaseAppTest.kt`。要素は testTag (resource-id) で探すので、
   `TestTags` の名前を変えるとここも直す必要がある。
 - 失敗したときは、CI のログに logcat の要点・crash バッファ・終了時点の画面の要素一覧が出る。
@@ -104,7 +108,7 @@ app/src/main/java/com/giracle/android/
 ├── GiracleApp.kt / MainActivity.kt   起動・前面/背面の切り替え
 ├── AppGraph.kt                       依存関係の組み立て・ログイン状態・起動時スナップショット
 ├── data/
-│   ├── net/   Endpoint (URL 配置)・Http (OkHttp・トークン)・GiracleApi (全 API)・WsClient
+│   ├── net/   Endpoint (URL 配置)・Http (OkHttp・トークン)・GiracleApi (全 API)・WsClient・LocalNetwork (Android 17 の権限)
 │   ├── model/ サーバーの応答モデル
 │   ├── ChatStore.kt   状態と WebSocket イベントの反映 (Web 版の stores + WS)
 │   ├── MessageParser.kt  本文の記法 (メンション・URL など) の解析

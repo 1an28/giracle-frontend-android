@@ -1,5 +1,7 @@
 package com.giracle.android.ui.members
 
+import androidx.compose.ui.platform.testTag
+import com.giracle.android.ui.common.TestTags
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -169,6 +171,7 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
     var roleEdit by remember { mutableStateOf(false) }
     var confirmBan by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     var newPassword by remember { mutableStateOf<String?>(null) }
     val bot by produceState<com.giracle.android.data.model.BotInfo?>(null, u?.isBot) { if (u?.isBot == true) value = runCatching { graph.api.botByRemoteUser(userId) }.getOrNull() }
 
@@ -185,6 +188,7 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
                         Text(u?.displayName ?: "…", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         if (u?.isBot == true) Badge("BOT")
                         if (u?.isBanned == true) Badge("BAN 中", strong = true)
+                        if (u?.isDeleted == true) Badge("削除済み", strong = true)
                     }
                     Text(if (userId in online) "オンライン" else "オフライン", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -204,6 +208,14 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
                 if (store.can("manageRole")) OutlinedButton(onClick = { roleEdit = true }) { Text("ロール") }
                 if (store.can("manageUser") && userId != me?.id) {
                     OutlinedButton(onClick = { confirmBan = true }) { Text(if (u?.isBanned == true) "BAN 解除" else "BAN", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+            // ユーザーの削除 (Web 版には無い。サーバーの API はある。#43、D-033)。自分・削除済みには出さない
+            if (store.can("manageUser") && userId != me?.id && u != null && !u.isDeleted) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag(TestTags.PROFILE_DELETE_USER)) {
+                        Text("ユーザーを削除", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
             // パスワードを忘れた人のために、管理者が作り直す (Web 版には無い。D-022)
@@ -276,6 +288,33 @@ fun UserSheet(userId: String, onDismiss: () -> Unit) {
                 }) { Text("コピー") }
             },
             dismissButton = { TextButton(onClick = { newPassword = null }) { Text("閉じる") } },
+        )
+    }
+    if (confirmDelete && u != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("${u.displayName} を削除しますか？") },
+            text = {
+                Text(
+                    "ログインできなくなり、ログイン中の端末も切断されます。この人の通知と、この人が作った Bot も消えます。" +
+                        "これまでのメッセージは残ります。元に戻すことはできません。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch {
+                        runCatching { graph.api.deleteUser(userId) }
+                            .onSuccess {
+                                store.putUser(u.copy(isDeleted = true))
+                                ctx.toast("削除しました")
+                                onDismiss()
+                            }
+                            .onFailure { ctx.toast(it.userMessage()) }
+                    }
+                }, modifier = Modifier.testTag(TestTags.PROFILE_DELETE_USER_CONFIRM)) { Text("削除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("キャンセル") } },
         )
     }
     if (confirmBan && u != null) {

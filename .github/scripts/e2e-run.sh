@@ -2,12 +2,15 @@
 # CI 用: 起動済みのエミュレータに配布版 APK と確認用 APK (:e2e) を入れ、通しの確認 (#12) を動かす。
 # 前提: emulator-start.sh で起動済み、localhost:3333 にサーバー (local-server)、APK はビルド済み。
 #   APP_APK : 確かめる APK (既定: assembleRelease の出力)
+#   LAN_SERVER : 端末から LAN のアドレスで見たサーバー (既定 http://10.0.2.2:3333 = エミュレータから見たランナー)。
+#                電波を切る確認 (#37) とローカルネットワーク権限の確認 (#42) に使う。空にすると飛ばす
 # 結果は e2e-out/ (画面・logcat・crash バッファ) に置く。
 set -uo pipefail
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
 ADB="$SDK/platform-tools/adb"
 AAPT2=$(ls -d "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
 APP_APK=${APP_APK:-app/build/outputs/apk/release/app-release.apk}
+LAN_SERVER=${LAN_SERVER-http://10.0.2.2:3333}
 TEST_APK=$(ls e2e/build/outputs/apk/debug/*.apk | head -1)
 APP_PKG=$("$AAPT2" dump packagename "$APP_APK")
 TEST_PKG=$("$AAPT2" dump packagename "$TEST_APK")
@@ -26,7 +29,9 @@ set -e
 set +e
 
 t0=$(date +%s)
-"$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 \
+LAN_ARGS=()
+[ -n "$LAN_SERVER" ] && LAN_ARGS=(-e lanServer "$LAN_SERVER")
+"$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 "${LAN_ARGS[@]}" \
   "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
 echo "e2e: $(( $(date +%s) - t0 ))s"
 
