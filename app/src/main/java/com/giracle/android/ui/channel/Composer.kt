@@ -509,7 +509,8 @@ private fun OutboxBar(channelId: String) {
                     )
                 }
                 TextButton(onClick = { graph.flushOutbox(item.localId) }) { Text("今すぐ送る") }
-                TextButton(onClick = { graph.outbox.remove(item.localId) }) { Text("取り消す") }
+                // 画面を離れても取り消しは保存し終える (アプリの scope)
+                TextButton(onClick = { graph.scope.launch { graph.outbox.remove(item.localId) } }) { Text("取り消す") }
             }
         }
         HorizontalDivider()
