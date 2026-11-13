@@ -401,8 +401,8 @@ class ReleaseAppTest {
         // findObject は既定で、画面が 500ms 落ち着くのを待ってから探す。それを測る時間に含めないよう、測る間だけ待たない
         private fun measure(label: String, sel: BySelector, timeoutMs: Long, required: Boolean) {
             val conf = Configurator.getInstance()
-            val idle = conf.waitForIdleTimeout
-            conf.waitForIdleTimeout = 0
+            val idle = conf.getWaitForIdleTimeout()
+            conf.setWaitForIdleTimeout(0)
             val found = try {
                 val end = last + timeoutMs
                 var hit = false
@@ -412,7 +412,7 @@ class ReleaseAppTest {
                 }
                 hit
             } finally {
-                conf.waitForIdleTimeout = idle
+                conf.setWaitForIdleTimeout(idle)
             }
             if (found) {
                 Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
