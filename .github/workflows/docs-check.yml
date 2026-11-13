@@ -1,0 +1,21 @@
+name: docs-check
+
+# 文書だけの変更でも走る、数秒で終わる確認 (D-052)。
+# 判断の番号の重なりを見つける。main を取り込んだ後の PR でも走る。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  decision-ids:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: .github/scripts/check-decision-ids.sh

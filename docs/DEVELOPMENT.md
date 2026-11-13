@@ -110,6 +110,33 @@ python3 devtools/push-receiver.py &   # localhost:8443 で受ける (自己署�
 python3 devtools/push-e2e.py          # 登録 → メンション → 受信 → 復号 (pip install http_ece cryptography)
 ```
 
+## PR をマージまで進める (D-052)
+
+並行するセッションの PR が先にマージされると、docs の追記どうしが競合する。CI の終わりの知らせも届かないことがある。
+どちらも、自分で確かめて進める。
+
+1. **判断の番号**: その時点の main と開いている PR の最大の次にする。重なりは docs-check (CI) が見つける。
+2. **push したら、知らせだけに頼らず時間をおいて自分で確かめる**。PR を購読したうえで、
+   後で自分に知らせる手段 (`send_later` など) を、下の目安の時間で予約してから待つ。起きたら PR の check runs を読み、
+   終わっていなければ 5〜10 分後にまた予約する。`sleep` で待たない。待つ間は調べものなど別のことをしてよい。
+   - 目安 (2026-11 の実績): docs-check 1 分弱・live-test 約 2 分・build 約 4 分・e2e 約 10 分・
+     baseline-profile 約 19 分 (baselineprofile/ などを変えたときだけ)。文書だけの変更は docs-check だけが走る
+   - 最初の確認は、走る中で一番長いものの目安 + 2 分ほど後
+   - 「check suite が終わった」という知らせは、ワークフローごとに来る。先に終わった docs-check だけで来ることがあるので、
+     知らせを受けても check runs をすべて見て、全部が終わったかを確かめる (2026-11-13 に #63 で確かめた)
+3. **マージの直前に main を取り込む**。`git fetch origin main` して、main が PR の元から進んでいれば
+   `git merge origin/main` する (GitHub が競合と言っていなくても。番号の重なりは競合として出ないため)。
+   - DECISIONS.md・RESEARCH.md は、`.gitattributes` の設定で両方の追記が自動で残る。ただし既存の行を両方が書き換えていても、
+     競合にならず新旧が並んで残る。取り込んだ後 `git diff ORIG_HEAD -- docs/DECISIONS.md docs/RESEARCH.md` で、追記以外が無いか見る
+   - 自分の枝に `.gitattributes` の設定がまだ無い (D-052 より前に分かれた) ときは、union が効かず普通の競合になる。手で両方残す
+   - それ以外の競合 (ROADMAP.md など) は手で直す。追記どうしは両方残し、書き換えどうしは両方の意図を合わせる
+   - union は自分の追記を先に置くので、番号の順が前後することがある。並べ直す
+   - 判断の番号が重なっていたら、自分の方を付け直す (本文・コミット以外の文書・PR の説明の参照も)
+   - 取り込んで push したら 2. に戻り、CI が通るのを確かめる
+4. **マージ**: 直前にもう一度 `git fetch origin main` し、3. で取り込んだ main から進んでいないことを確かめる (進んでいたら 3. に戻る)。
+   GitHub の MCP の `merge_pull_request` に、CI が通ったコミットを `expectedHeadSha` として渡してマージする
+   (これは PR の head しか比べず、main が進んだかは見ない)。マージ後、main の docs-check が通ったことを見てから終える。
+
 ## 構成
 
 ```
