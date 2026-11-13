@@ -56,15 +56,18 @@ fun SwipeToReply(enabled: Boolean, onReply: () -> Unit, content: @Composable Box
                 .offset { IntOffset(offset.value.roundToInt(), 0) }
                 .pointerInput(Unit) {
                     var passed = false
+                    // 引いた量は手元で積む (offset への反映は後で動くので、offset.value から足すと動きが抜けることがある)
+                    var acc = 0f
                     detectHorizontalDragGestures(
-                        onDragStart = { passed = false },
+                        onDragStart = { passed = false; acc = offset.value },
                         onDragEnd = {
                             if (passed) reply()
                             scope.launch { offset.animateTo(0f) }
                         },
                         onDragCancel = { scope.launch { offset.animateTo(0f) } },
                     ) { change, dx ->
-                        val next = (offset.value + dx).coerceIn(0f, threshold * 1.4f)
+                        val next = (acc + dx).coerceIn(0f, threshold * 1.4f)
+                        acc = next
                         if (!passed && next >= threshold) {
                             passed = true
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)

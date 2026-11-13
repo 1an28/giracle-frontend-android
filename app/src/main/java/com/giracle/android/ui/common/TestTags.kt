@@ -42,6 +42,8 @@ object TestTags {
     const val HOME_MANAGE_SERVER = "home.manage_server"
     const val HOME_SHARE_BANNER = "home.share_banner"
     fun homeChannel(channelId: String) = "home.channel:$channelId"
+    fun homeChannelDrag(channelId: String) = "home.channel_drag:$channelId"
+    const val HOME_REORDER = "home.reorder"
 
     // チャンネル
     const val CHANNEL_MESSAGES = "channel.messages"

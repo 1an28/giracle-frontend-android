@@ -222,6 +222,28 @@ class UiScreenshotTest {
         waitTag(TestTags.COMPOSER_REPLY); shot("11_swipe_reply")
     }
 
+    /** ホームの並べ替え: つまみを下へ引くと 1 つ下と入れ替わる (D-044) */
+    @Test fun dragToReorder() {
+        assumeTrue(server != null)
+        // 名前で並ぶとき先頭に来るよう、数字で始める
+        val a = newChannel("0drag-a")
+        val b = newChannel("0drag-b")
+        startApp()
+        waitTag(TestTags.homeChannel(a))
+        click(TestTags.HOME_REORDER)
+        // つまみは行 (押せる要素) の中にまとめられるので、まとめる前の木で探す
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(TestTags.homeChannelDrag(a)), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        val h = rule.onNodeWithTag(TestTags.homeChannel(a)).fetchSemanticsNode().size.height.toFloat()
+        rule.onNodeWithTag(TestTags.homeChannelDrag(a), useUnmergedTree = true).performTouchInput {
+            down(center)
+            repeat(10) { moveBy(androidx.compose.ui.geometry.Offset(0f, h / 8f)) }
+            up()
+        }
+        rule.waitForIdle(); shot("12_reorder_drag")
+        val order = ApplicationProvider.getApplicationContext<GiracleApp>().graph.prefs.channelOrder
+        assertTrue("b が a より上に来る: $order", order.indexOf(b) in 0 until order.indexOf(a))
+    }
+
     @Test fun longText() {
         assumeTrue(server != null)
         val ch = newChannel("long")
