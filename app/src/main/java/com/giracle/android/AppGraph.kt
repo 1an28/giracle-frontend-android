@@ -95,6 +95,10 @@ class AppGraph(context: Context) {
     val phase: StateFlow<AppPhase> = _phase
 
     private var snapshotJob: kotlinx.coroutines.Job? = null
+    // init の中で起こす処理から使うので、init より前に置く
+    private val snapshotFile = com.giracle.android.data.SafeFile(java.io.File(appContext.filesDir, "snapshot.json"))
+    /** 書くのを待っているスナップショット。null は「書くものが無い」(書き終えた後・ログアウト後) */
+    private val snapshotToSave = MutableStateFlow<com.giracle.android.data.Snapshot?>(null)
     @Volatile private var sessionLoadStarted = false
 
     init {
@@ -116,31 +120,43 @@ class AppGraph(context: Context) {
             // つながったら送信待ちを送る (#30)
             ws.state.collect { if (it == com.giracle.android.data.net.WsClient.State.Connected) flushOutbox() }
         }
+        scope.launch(Dispatchers.IO) {
+            // 背面に回ったときのスナップショットを書く。書き込みはこの 1 本だけで行い、重ならない (#67)。
+            // 書いている間に次が来たら、書き終えてから最新の 1 つだけを書く (StateFlow は途中の値を飛ばす)
+            snapshotToSave.collect { if (it != null) writeSnapshot() }
+        }
         scope.launch {
             // 「セッション切れ」通知を監視 (ストアが作り直されたら付け替える)
             _store.collectLatest { s -> s.sessionExpired.collect { if (it) signOutLocal() } }
         }
     }
 
-    private val snapshotFile = java.io.File(appContext.filesDir, "snapshot.json")
 
     private fun readSnapshot(userId: String): com.giracle.android.data.Snapshot? = runCatching {
-        if (!snapshotFile.exists()) return null
-        val s = com.giracle.android.data.net.AppJson.decodeFromString(com.giracle.android.data.Snapshot.serializer(), snapshotFile.readText())
+        val text = snapshotFile.readText() ?: return null
+        val s = com.giracle.android.data.net.AppJson.decodeFromString(com.giracle.android.data.Snapshot.serializer(), text)
         // 別ユーザー・別サーバーのものは使わない
-        if (s.userId == userId && snapshotFile.parentFile != null && prefs.serverUrl != null) s else null
+        if (s.userId == userId && prefs.serverUrl != null) s else null
     }.getOrNull()
 
-    /** アプリが背面に回ったときに呼ぶ。書き込みは裏で行い、途中で落ちても壊れないよう一時ファイル経由 */
+    /** アプリが背面に回ったときに呼ぶ。書き込みは裏の 1 本 (init) が行う */
     fun saveSnapshot() {
-        val snap = store.snapshot() ?: return
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                val tmp = java.io.File(snapshotFile.path + ".tmp")
-                tmp.writeText(com.giracle.android.data.net.AppJson.encodeToString(com.giracle.android.data.Snapshot.serializer(), snap))
-                tmp.renameTo(snapshotFile)
+        snapshotToSave.value = store.snapshot() ?: return
+    }
+
+    private fun writeSnapshot() {
+        var written: com.giracle.android.data.Snapshot? = null
+        try {
+            // 書く直前の最新を書く。ログアウトで null になっていたら書かない (前のユーザーの内容を戻さない)
+            snapshotFile.write {
+                written = snapshotToSave.value
+                written?.let { com.giracle.android.data.net.AppJson.encodeToString(com.giracle.android.data.Snapshot.serializer(), it) }
             }
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("GiracleSnapshot", "save failed", e)
         }
+        // 書き終えたものは手放す (メモリに持ち続けない)。その間に次が来ていれば残り、もう一度書く
+        written?.let { snapshotToSave.compareAndSet(it, null) }
     }
 
     fun setServer(url: String, direct: Boolean): Boolean {
@@ -225,6 +241,7 @@ class AppGraph(context: Context) {
         com.giracle.android.ui.channel.Drafts.clear(appContext)
         outbox.clear()
         com.giracle.android.ui.ChannelShortcuts.clear(appContext)
+        snapshotToSave.value = null
         snapshotFile.delete()
         // 状態を捨てて作り直す
         _store.value = newStore()
