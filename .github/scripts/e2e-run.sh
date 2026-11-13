@@ -100,7 +100,7 @@ echo "::group::e2e の結果の印"; grep -o "E2E-RESULT .*" "$OUT/logcat.txt"; 
 echo "::group::よく使う作業の手数と時間 (ux)"
 grep -oE "E2E-RESULT ux net=.*" "$OUT/logcat.txt" | sed "s/E2E-RESULT ux //"
 # 手がかり: 再同期・スナップショットからの復元・アプリのプロセスの起動 (つなぎ直した後の切り替えの値を読むため)
-grep -E "GiracleSync|GiracleE2E: E2E-RESULT ux|ActivityManager: Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | tail -n 60
+grep -E " I GiracleSync: | I GiracleE2E: E2E-RESULT ux|ActivityManager: Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | tail -n 60
 echo "::endgroup::"
 if [ $status = 0 ] && ! grep -q "E2E-RESULT ux_test=done net=fast" "$OUT/logcat.txt"; then
   echo "::error::よく使う作業の測定 (uxTasks) が最後まで動いていない"

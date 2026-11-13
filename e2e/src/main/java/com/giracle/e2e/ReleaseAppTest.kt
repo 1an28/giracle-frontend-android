@@ -331,7 +331,8 @@ class ReleaseAppTest {
 
             // 切り替える (つなぎ直した後に、一度開いた B へ)。背面に回すと接続を切る設定 (常時接続 OFF) なので、
             // 戻るとつなぎ直して読み込み直す (docs/UI_PRINCIPLES.md の C-2)
-            val resyncsBefore = resyncCount()
+            // 端末の時刻 (エポック秒)。この時刻より後に、再同期の終わりのログが出るのを待つ
+            val since = device.executeShellCommand("date +%s").trim()
             device.pressHome()
             SystemClock.sleep(5_000)
             launch()
@@ -342,7 +343,7 @@ class ReleaseAppTest {
             // つなぎ直しの後の再同期 (読み込み直し) が終わるのを、アプリのログで待つ。
             // 以前は 3 秒だけ待っており、遅い回線では再同期が終わる前に B を開いて、つなぎ直す前の状態を測っていた (#57)
             val waitFrom = SystemClock.uptimeMillis()
-            waitFor("つなぎ直した後の再同期が終わる (GiracleSync)", 30_000) { resyncCount() > resyncsBefore }
+            waitFor("つなぎ直した後の再同期が終わる (GiracleSync)", 30_000) { resyncedSince(since) }
             Log.i(TAG, "E2E-RESULT ux net=$uxNet task=resync_wait ms=${SystemClock.uptimeMillis() - waitFrom}")
             UxTask("switch_after_reconnect").run {
                 back()
@@ -407,8 +408,13 @@ class ReleaseAppTest {
         Log.i(TAG, "E2E-RESULT ux net=$uxNet task=round_trip ms=${ms.sorted()[2]} all=$ms")
     }
 
-    /** アプリが再同期を終えた回数 (ChatStore.resync が終わりに出すログの行数) */
-    private fun resyncCount(): Int = shell("logcat -d -s GiracleSync:I").lines().count { "resync:" in it }
+    /**
+     * 端末の時刻 [since] (エポック秒) より後に、アプリが再同期を終えたか (ChatStore.resync が終わりに出すログ)。
+     * 行数で比べるとログのリングバッファが回ったときに数え違えるので、時刻で区切る。
+     * 500ms ごとに呼ぶので、[shell] を通さず (問い合わせのたびにデバッグ行を残さず) に問い合わせる
+     */
+    private fun resyncedSince(since: String): Boolean =
+        device.executeShellCommand("logcat -d -s GiracleSync:I -T $since.000").lines().any { "resync:" in it }
 
     /** 1 つの作業の手数と時間を数える ([uxTasks]) */
     private inner class UxTask(private val name: String) {

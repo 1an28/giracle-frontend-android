@@ -209,11 +209,10 @@ class ChatStore(
         // 取り直しに失敗しても、表示はそのまま残り、次に開いたときに取り直す。
         // 以前は表示を空にしてから取り直しており、失敗すると例外が購読の外まで抜けてアプリが落ちていた
         val current = currentChannelId
+        val others = histories.keys.count { it != current }
         for ((id, flow) in histories) {
             if (id != current) flow.value = HistoryState()
         }
-        // 手がかり: つなぎ直した後に、どのチャンネルの履歴をどう扱ったか。e2e はこの行で再同期の終わりを待つ (D-046)
-        Log.i(SYNC_TAG, "resync: current=$current others=${histories.keys.count { it != current }}")
         if (current != null) {
             histories[current]?.update { if (it.loaded) it.copy(fromCache = true) else it }
             try {
@@ -224,6 +223,8 @@ class ChatStore(
                 Log.w(TAG, "resync: reopen failed", e)
             }
         }
+        // 手がかり: つなぎ直した後に、どのチャンネルの履歴をどう扱ったか。e2e はこの行で再同期の終わりを待つ (D-046)
+        Log.i(SYNC_TAG, "resync: current=$current others=$others")
     }
 
     private suspend fun initialLoadNoWs(userId: String) = coroutineScope {
