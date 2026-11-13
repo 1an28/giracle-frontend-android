@@ -77,4 +77,10 @@ if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   cat "$OUT/crash.txt"
   status=1
 fi
+# 落ちはしないが、アプリ全体の裏の処理から想定外の例外が漏れた (D-036)。見逃さないよう失敗にする
+if grep -q "GiracleUncaught" "$OUT/logcat.txt"; then
+  echo "::error::想定外の例外が記録された (GiracleUncaught。D-036)"
+  grep -A 30 "GiracleUncaught" "$OUT/logcat.txt" | head -n 80
+  status=1
+fi
 exit $status

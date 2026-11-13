@@ -154,6 +154,8 @@ fun Composer(
     val graph = LocalGraph.current
     val store = LocalStore.current
     val ctx = LocalContext.current
+    /** 画面より長く生きる処理 (送信) で使う。Activity を抱え込まないため */
+    val appCtx = ctx.applicationContext
     val scope = rememberCoroutineScope()
     val server by store.serverConfig.collectAsStateWithLifecycle()
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
@@ -279,12 +281,15 @@ fun Composer(
         val body = text
         if (editing != null) {
             sending = true
-            scope.launch {
+            // 送信と同じく、画面を離れても取り消さない (下の submit の説明)
+            graph.scope.launch(Dispatchers.Main.immediate) {
                 try {
                     graph.api.edit(editing.id, body)
-                    state.setTextAndPlaceCursorAtEnd(Drafts.get(ctx, channelId))
+                    state.setTextAndPlaceCursorAtEnd(Drafts.get(appCtx, channelId))
                     onCancelEdit()
-                } catch (e: Exception) { ctx.toast(e.userMessage()) } finally { sending = false }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) { appCtx.toast(e.userMessage()) } finally { sending = false }
             }
             return
         }
@@ -297,22 +302,29 @@ fun Composer(
         attachments.clear()
         onCancelReply()
         sending = true
-        scope.launch {
+        // 送信はアプリの scope で行い、送った直後に画面を離れても取り消さない。
+        // 以前は画面の scope で送っており、送ってすぐ「戻る」と送信が取り消され、入力欄も空にした後なので本文が消えていた
+        graph.scope.launch(Dispatchers.Main.immediate) {
             try {
                 store.send(channelId, body, ids, reply)
                 // 共有シート・ランチャーに、このチャンネルを直接の送り先として出す (#25)
-                com.giracle.android.ui.ChannelShortcuts.reportSent(ctx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
-                Drafts.remove(ctx, channelId)
+                com.giracle.android.ui.ChannelShortcuts.reportSent(appCtx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
+                Drafts.remove(appCtx, channelId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (Outbox.isNetworkFailure(e)) {
                     // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
                     graph.outbox.add(channelId, body, ids, reply)
-                    Drafts.remove(ctx, channelId)
-                    ctx.toast("送信待ちにしました。つながったら送ります")
+                    Drafts.remove(appCtx, channelId)
+                    appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
                     state.setTextAndPlaceCursorAtEnd(keep)
                     attachments.addAll(keepAttach)
-                    ctx.toast("送信できませんでした: ${e.userMessage()}")
+                    // 画面を離れていても、次に開いたときに本文が戻るよう下書きにも書く
+                    Drafts.set(channelId, keep)
+                    Drafts.persist(appCtx, channelId)
+                    appCtx.toast("送信できませんでした: ${e.userMessage()}")
                 }
             } finally { sending = false }
         }
