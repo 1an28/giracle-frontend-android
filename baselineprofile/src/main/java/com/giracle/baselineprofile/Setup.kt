@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,22 +29,40 @@ internal object Setup {
     /**
      * 記録用のチャンネルを作り、スクロールできるだけのメッセージを入れる。
      * 通知の権限は先に与えておく (ログイン後の確認画面で止まらないように)。
+     * messages はスクロールの計測 (ScrollBenchmark) で増やす。2 回目以降は最初に作ったチャンネルを返す。
      */
-    fun prepare(): String {
+    fun prepare(messages: Int = 60): String {
         channelId?.let { return it }
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        device.executeShellCommand("pm grant $pkg android.permission.POST_NOTIFICATIONS")
+        grantNotifications(device)
         val api = Api(server)
         api.signIn(adminUser, adminPass)
         val id = api.call("PUT", "channel/create", JSONObject().put("channelName", "bp" + System.currentTimeMillis().toString().takeLast(6)).put("description", "Baseline Profile の記録用"))
             .getJSONObject("data").getString("channelId")
         runCatching { api.call("POST", "channel/join", JSONObject().put("channelId", id)) }
-        repeat(60) { i ->
+        repeat(messages) { i ->
             val text = if (i % 7 == 0) "記録用のメッセージ $i\n2 行目 **太字** https://example.com" else "記録用のメッセージ $i"
             api.call("POST", "message/send", JSONObject().put("channelId", id).put("message", text).put("fileIds", JSONArray()))
         }
         channelId = id
         return id
+    }
+
+    private fun grantNotifications(device: UiDevice) {
+        device.executeShellCommand("pm grant $pkg android.permission.POST_NOTIFICATIONS")
+    }
+
+    /**
+     * アプリを起動してログイン済みにする。データの無い端末で、起動時間の計測の前に使う。ログイン済みなら何もしない。
+     * 起動したアプリはそのまま (計測が毎回止めて起動し直す)。
+     * 引数 login=false のときは何もしない (サーバーに届かない Firebase Test Lab の実機で、ログイン画面までの起動を測る。D-048)。
+     */
+    fun ensureLoggedIn() {
+        if (args.getString("login") == "false") return
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        grantNotifications(device)
+        device.executeShellCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+        loginIfNeeded(device)
     }
 
     /** 起動直後に出る画面 (ログイン・ホーム・前回開いていたチャンネルのどれか) を 1 回の待ちで見分ける (#31) */
@@ -62,10 +81,9 @@ internal object Setup {
         device.wait(Until.findObject(By.res("screen.home")), 30_000) ?: error("ログイン後にホーム画面が出ない")
     }
 
-    /** よく使う流れ: (前回のチャンネル) → ホーム → チャンネルを開く → 履歴をスクロール → 戻る → 設定 → 戻る */
-    fun typicalUse(device: UiDevice, channelId: String) {
+    /** ホームまで戻り (前回のチャンネルが復元されていたら戻る)、指定のチャンネルを開いて、履歴の一覧を返す */
+    fun openChannel(device: UiDevice, channelId: String): UiObject2 {
         device.wait(Until.findObject(FIRST_SCREEN), 20_000) ?: error("画面が出ない")
-        // 前回開いていたチャンネルが復元されていたら、その画面も記録に入れてからホームに戻る (以前はホームを 20 秒待ってから戻っていた)
         if (device.hasObject(By.res("screen.channel"))) {
             device.wait(Until.findObject(By.res("channel.messages")), 10_000)
             device.pressBack()
@@ -75,6 +93,12 @@ internal object Setup {
         row.click()
         val list = device.wait(Until.findObject(By.res("channel.messages")), 15_000) ?: error("チャンネル画面が出ない")
         device.waitForIdle()
+        return list
+    }
+
+    /** よく使う流れ: (前回のチャンネル) → ホーム → チャンネルを開く → 履歴をスクロール → 戻る → 設定 → 戻る */
+    fun typicalUse(device: UiDevice, channelId: String) {
+        val list = openChannel(device, channelId)
         repeat(3) { list.scroll(Direction.UP, 1f) }
         repeat(3) { list.scroll(Direction.DOWN, 1f) }
         device.pressBack()

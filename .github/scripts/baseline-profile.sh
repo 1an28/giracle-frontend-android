@@ -3,6 +3,7 @@
 # 前提: emulator-start.sh で起動済み、localhost:3333 にサーバー (local-server)、APK はビルド済み。
 #   baseline-profile.sh generate <app.apk>   記録して app/src/main/baseline-prof.txt を置き換える
 #   baseline-profile.sh measure  <app.apk> <名前>   起動時間を測ってログに出す (ログイン済みの状態で使う)
+#   baseline-profile.sh scroll   <app.apk> <名前>   チャンネルのスクロールのフレーム時間を測ってログに出す (D-048)
 # 出力は bp-out/。
 set -uo pipefail
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
@@ -66,6 +67,15 @@ case "$MODE" in
     # 結果の要約 (timeToInitialDisplayMs の min / median / max) を見出し付きで出す
     echo "::group::起動時間 ($NAME)"
     grep -E "StartupBenchmark|timeToInitialDisplayMs|timeToFullDisplayMs" "$OUT/$NAME.txt"
+    echo "::endgroup::"
+    ;;
+  scroll)
+    NAME=${3:-scroll}
+    if ! run ScrollBenchmark "$NAME"; then echo "::warning::スクロールの計測 ($NAME) が失敗した"; exit 0; fi
+    # フレーム時間 (frameDurationCpuMs・frameOverrunMs の P50〜P99) を見出し付きで出す。エミュレータなので比べるだけに使う
+    echo "::group::スクロールのフレーム時間 ($NAME)"
+    # 計測の出力は同じ要約を何度も出すので、重複を除く
+    grep -E "^ScrollBenchmark_|frameDurationCpuMs|frameOverrunMs|frameCount" "$OUT/$NAME.txt" | awk '!seen[$0]++'
     echo "::endgroup::"
     ;;
 esac
