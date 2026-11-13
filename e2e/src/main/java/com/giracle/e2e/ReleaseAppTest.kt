@@ -31,6 +31,8 @@ import java.util.regex.Pattern
  *   lanServer   端末から LAN のアドレスで見たサーバー (CI は http://10.0.2.2:3333)。無ければ、それを使う確認を飛ばす。
  *               adb reverse の localhost は端末の通信網を通らないので、電波を切る確認 (#37) と
  *               Android 17 のローカルネットワーク権限の確認 (#42) はこちらを使う
+ *   uxServer / uxNet  よく使う作業の測定 (uxTasks) でアプリがつなぐサーバーと、ログに付ける回線の名前
+ *               (既定 server / fast。e2e-run.sh が遅延の中継を通した遅い回線 (slow) でも測る。D-046)
  *
  * 1 つの流れにしてあるのは、ログイン → チャンネル → 背面 → 設定 と、前の段階の状態を引き継ぐため。
  * 各段階の画面を [shots] に保存する (CI が取り出して成果物にする)。
@@ -43,6 +45,9 @@ class ReleaseAppTest {
     private val pkg = args.getString("appPackage") ?: "io.github.u1an28.giracle.kotlin"
     private val server = args.getString("server") ?: "http://localhost:3333"
     private val lanServer = args.getString("lanServer")
+    /** よく使う作業を測るときにつなぐサーバーと、その回線の名前 (e2e-run.sh が遅い回線でも測る。D-046) */
+    private val uxServer = args.getString("uxServer") ?: server
+    private val uxNet = args.getString("uxNet") ?: "fast"
     private val adminUser = args.getString("adminUser") ?: "admin"
     private val adminPass = args.getString("adminPass") ?: "password123"
     private val shots = File(instr.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
@@ -240,14 +245,16 @@ class ReleaseAppTest {
      * 2. サーバーを指定してログイン
      * 3. 通知の権限の確認 (Android 13 以上)。許可しても落ちないこと
      */
-    private fun freshLogin() {
+    private fun freshLogin(url: String = server) {
         shell("pm clear $pkg")
+        // LAN のアドレスのサーバーは、Android 17 以上ではローカルネットワークの権限が要る (#42)。確認画面は別のテストで確かめるので、先に許可しておく
+        if ("localhost" !in url && android.os.Build.VERSION.SDK_INT >= 37) shell("pm grant $pkg android.permission.ACCESS_LOCAL_NETWORK")
         launch()
-        val url = wait(res("login.server_url"), 30_000, "ログイン画面")
+        val field = wait(res("login.server_url"), 30_000, "ログイン画面")
         shot("launch")
-        url.text = server
+        field.text = url
         wait(res("login.connect"), 5_000, "接続ボタン").click()
-        wait(res("login.username"), 20_000, "サーバー情報の取得 (login.username)").text = adminUser
+        wait(res("login.username"), 30_000, "サーバー情報の取得 (login.username)").text = adminUser
         wait(res("login.password"), 5_000, "パスワード欄").text = adminPass
         hideKeyboard() // ボタンを隠さないように
         wait(res("login.submit"), 5_000, "ログインボタン").click()
@@ -265,7 +272,7 @@ class ReleaseAppTest {
      * よく使う作業 (docs/UI_PRINCIPLES.md の 1 章と 9 章、D-046) の手数と時間を測り、ログに出す。
      * 手数は利用者がする操作 (押す・長押し・すべらせる・戻る) の回数。文字の入力は数えない。
      * 時間は、最後の操作から、終わりの状態の要素が画面に出るまで (エミュレータなので、前の実行との比較だけに使う)。
-     * 結果は「E2E-RESULT ux task=... taps=... ms=...」の行。e2e-run.sh が CI のログにまとめて出す。
+     * 結果は「E2E-RESULT ux net=... task=... taps=... ms=...」の行。e2e-run.sh が CI のログにまとめて出す。
      */
     @Test fun uxTasks() {
         // 準備: A は既読 25 件の後に未読 20 件、B は 10 件 (1 件目に検索の語)
@@ -283,7 +290,8 @@ class ReleaseAppTest {
             val firstUnread = admin.recent(channelId).first { it.content == "未読01-$suffix" }.id
             val bFirst = admin.recent(chB).first { it.content.startsWith("B01-$suffix") }.id
 
-            freshLogin()
+            logRoundTrip()
+            freshLogin(uxServer)
 
             // 読む: ホームの未読のチャンネルを開き、未読の始まりが見える
             UxTask("read_unread").run {
@@ -300,8 +308,9 @@ class ReleaseAppTest {
                 tap(wait(res("composer.input"), 5_000, "入力欄"))
                 wait(res("composer.input"), 5_000, "入力欄").text = reply
                 tap(wait(res("composer.send"), 5_000, "送信ボタン"))
-                // 読んでいる途中で返すと、送った返信が画面の外 (一番下) に出て見えないことがある。それも記録する
-                done(By.textContains(reply), timeoutMs = 8_000, required = false)
+                // 読んでいる途中で返すと、送った返信が画面の外 (一番下) に出て見えないことがある。それも記録する。
+                // メッセージの一覧の中だけを探す (一覧の外の入力欄などに残った本文に一致させないため。#57)
+                done(By.res("channel.messages").hasDescendant(By.textContains(reply)), timeoutMs = 8_000, required = false)
             }
             waitFor("サーバーに返信が届く") { admin.recentTexts(channelId).contains(reply) }
             shot("ux_reply")
@@ -322,6 +331,8 @@ class ReleaseAppTest {
 
             // 切り替える (つなぎ直した後に、一度開いた B へ)。背面に回すと接続を切る設定 (常時接続 OFF) なので、
             // 戻るとつなぎ直して読み込み直す (docs/UI_PRINCIPLES.md の C-2)
+            // 端末の時刻 (エポック秒)。この時刻より後に、再同期の終わりのログが出るのを待つ
+            val since = device.executeShellCommand("date +%s").trim()
             device.pressHome()
             SystemClock.sleep(5_000)
             launch()
@@ -329,7 +340,11 @@ class ReleaseAppTest {
             val ping = "再接続確認-$suffix"
             bob.send(channelId, ping)
             wait(By.textContains(ping), 20_000, "戻った後の受信 (つなぎ直した WebSocket)")
-            SystemClock.sleep(3_000) // つなぎ直しの後の読み込み直しが終わるのを待つ
+            // つなぎ直しの後の再同期 (読み込み直し) が終わるのを、アプリのログで待つ。
+            // 以前は 3 秒だけ待っており、遅い回線では再同期が終わる前に B を開いて、つなぎ直す前の状態を測っていた (#57)
+            val waitFrom = SystemClock.uptimeMillis()
+            waitFor("つなぎ直した後の再同期が終わる (GiracleSync)", 30_000) { resyncedSince(since) }
+            Log.i(TAG, "E2E-RESULT ux net=$uxNet task=resync_wait ms=${SystemClock.uptimeMillis() - waitFrom}")
             UxTask("switch_after_reconnect").run {
                 back()
                 tap(findScrolling(res("home.channel:$chB"), "チャンネル B"))
@@ -368,11 +383,38 @@ class ReleaseAppTest {
             }
             shot("ux_search")
             assertAlive("よく使う作業の測定の後")
-            Log.i(TAG, "E2E-RESULT ux_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
+            Log.i(TAG, "E2E-RESULT ux_test=done net=$uxNet sdk=${android.os.Build.VERSION.SDK_INT}")
         } finally {
             runCatching { admin.deleteChannel(chB) }
         }
     }
+
+    /**
+     * 端末から [uxServer] への往復時間を 5 回測ってログに出す。遅い回線 (e2e-run.sh の遅延の中継) が
+     * 実際に効いているかを、作業の時間とは別に確かめるため (#57)。新しい接続を毎回張る
+     */
+    private fun logRoundTrip() {
+        val ms = (1..5).map {
+            val t = SystemClock.uptimeMillis()
+            runCatching {
+                val c = java.net.URL("${uxServer.trimEnd('/')}/api/server/config").openConnection() as java.net.HttpURLConnection
+                c.setRequestProperty("Connection", "close")
+                c.connectTimeout = 10_000
+                c.readTimeout = 10_000
+                c.inputStream.use { it.readBytes() }
+                c.disconnect()
+            }.fold({ SystemClock.uptimeMillis() - t }, { -1L })
+        }
+        Log.i(TAG, "E2E-RESULT ux net=$uxNet task=round_trip ms=${ms.sorted()[2]} all=$ms")
+    }
+
+    /**
+     * 端末の時刻 [since] (エポック秒) より後に、アプリが再同期を終えたか (ChatStore.resync が終わりに出すログ)。
+     * 行数で比べるとログのリングバッファが回ったときに数え違えるので、時刻で区切る。
+     * 500ms ごとに呼ぶので、[shell] を通さず (問い合わせのたびにデバッグ行を残さず) に問い合わせる
+     */
+    private fun resyncedSince(since: String): Boolean =
+        device.executeShellCommand("logcat -d -s GiracleSync:I -T $since.000").lines().any { "resync:" in it }
 
     /** 1 つの作業の手数と時間を数える ([uxTasks]) */
     private inner class UxTask(private val name: String) {
@@ -415,10 +457,10 @@ class ReleaseAppTest {
                 conf.setWaitForIdleTimeout(idle)
             }
             if (found) {
-                Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
+                Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
                 return
             }
-            Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=-1 shown=false")
+            Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=-1 shown=false")
             if (required) {
                 shot("ux_$label")
                 assertAlive("「$label」の測定")

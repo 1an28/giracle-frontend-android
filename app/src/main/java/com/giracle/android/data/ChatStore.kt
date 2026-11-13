@@ -209,6 +209,7 @@ class ChatStore(
         // 取り直しに失敗しても、表示はそのまま残り、次に開いたときに取り直す。
         // 以前は表示を空にしてから取り直しており、失敗すると例外が購読の外まで抜けてアプリが落ちていた
         val current = currentChannelId
+        val others = histories.keys.count { it != current }
         for ((id, flow) in histories) {
             if (id != current) flow.value = HistoryState()
         }
@@ -222,6 +223,8 @@ class ChatStore(
                 Log.w(TAG, "resync: reopen failed", e)
             }
         }
+        // 手がかり: つなぎ直した後に、どのチャンネルの履歴をどう扱ったか。e2e はこの行で再同期の終わりを待つ (D-046)
+        Log.i(SYNC_TAG, "resync: current=$current others=$others")
     }
 
     private suspend fun initialLoadNoWs(userId: String) = coroutineScope {
@@ -259,6 +262,7 @@ class ChatStore(
     /** 前回のスナップショットを反映する (サーバーからの読み込みが終わる前の仮表示) */
     fun restore(s: Snapshot) {
         if (me.value != null) return
+        Log.i(SYNC_TAG, "restore: histories=${s.histories.size}")
         me.value = s.me
         serverConfig.value = s.server
         channels.value = s.channels
@@ -739,6 +743,8 @@ class ChatStore(
 
     companion object {
         private const val TAG = "ChatStore"
+        /** 再同期・復元の記録。配布版でも出す (e2e の手がかり。GiracleNav と同じ扱い) */
+        private const val SYNC_TAG = "GiracleSync"
         private const val MAX_IN_MEMORY = 600
         private const val KEEP_AFTER_TRIM = 450
         private const val KEEP_WHEN_LEFT = 60
