@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -39,7 +40,7 @@ data class OutboxItem(
  * - ネットワークの失敗で送れなかったものだけを入れる (サーバーに断られたものは入れない)
  * - つながったら (WebSocket の接続) 古い順に送る。途中でまたネットワークで失敗したら、そこで止める
  * - サーバーには送信の重複を防ぐ仕組みが無い (S-8) ので、送り直す前に最近の履歴を見て、
- *   自分が同じ本文をその後に送っていれば「届いていた」とみなして送らない
+ *   同じものがその後に自分から送られていれば「届いていた」とみなして送らない ([findDelivered]、#66)
  * - 保存は [SafeFile] で 1 本にまとめ、メインスレッドの外で書く (#67)。書くのは書く時点の最新の中身
  */
 class Outbox(file: File) {
@@ -47,10 +48,17 @@ class Outbox(file: File) {
     private val _items = MutableStateFlow(load())
     val items: StateFlow<List<OutboxItem>> = _items
     private val mutex = Mutex()
+    private val usedFile = SafeFile(File(file.path + ".used"))
+    /**
+     * 送信待ちの箱が「届いていた」とみなした・送ったメッセージの ID (新しいものが後)。
+     * 次の送り直しで、同じメッセージをほかの項目に当てないために、送り直しをまたいで (ファイルにも) 残す (#66)
+     */
+    private val used: LinkedHashSet<String> = loadUsed()
 
     /** 送る処理 (差し替えはテスト用) */
     interface Sender {
-        suspend fun send(item: OutboxItem)
+        /** @return 送ったメッセージの ID */
+        suspend fun send(item: OutboxItem): String
         /** そのチャンネルの最近のメッセージ (新しい順でなくてよい) */
         suspend fun recent(channelId: String): List<Message>
         val myUserId: String?
@@ -72,6 +80,8 @@ class Outbox(file: File) {
     fun clear() {
         _items.value = emptyList()
         file.delete()
+        used.clear()
+        usedFile.delete()
     }
 
     /**
@@ -85,10 +95,13 @@ class Outbox(file: File) {
         for (item in targets) {
             try {
                 val recent = recentByChannel.getOrPut(item.channelId) { sender.recent(item.channelId) }
-                if (alreadyDelivered(item, recent, sender.myUserId)) {
-                    Log.i(TAG, "already delivered: ${item.localId}")
+                // 一致に使ったもの・送ったものは、ほかの項目に当てない (#66)
+                val delivered = findDelivered(item, recent, sender.myUserId, used)
+                if (delivered != null) {
+                    Log.i(TAG, "already delivered: ${item.localId} as ${delivered.id}")
+                    markUsed(delivered.id)
                 } else {
-                    sender.send(item)
+                    markUsed(sender.send(item))
                 }
                 remove(item.localId)
                 done++
@@ -110,6 +123,26 @@ class Outbox(file: File) {
         file.readText()?.let { AppJson.decodeFromString(ListSerializer(OutboxItem.serializer()), it) } ?: emptyList()
     }.onFailure { Log.w(TAG, "load failed", it) }.getOrDefault(emptyList())
 
+    private fun loadUsed(): LinkedHashSet<String> = runCatching {
+        usedFile.readText()?.let { LinkedHashSet(AppJson.decodeFromString(ListSerializer(String.serializer()), it)) } ?: LinkedHashSet()
+    }.onFailure { Log.w(TAG, "load used failed", it) }.getOrDefault(LinkedHashSet())
+
+    /** [flush] の中 (mutex の内側) からだけ呼ぶ */
+    private suspend fun markUsed(messageId: String) {
+        used.remove(messageId)
+        used += messageId
+        // 比べる相手は最近 30 件なので、古いものは捨ててよい
+        while (used.size > MAX_USED) used.remove(used.first())
+        val snapshot = used.toList()
+        withContext(Dispatchers.IO) {
+            try {
+                usedFile.write { AppJson.encodeToString(ListSerializer(String.serializer()), snapshot) }
+            } catch (e: IOException) {
+                Log.w(TAG, "save used failed", e)
+            }
+        }
+    }
+
     /** 今の一覧を保存する。同時に呼ばれても [SafeFile] が順に書き、書く直前の最新の一覧を書く */
     private suspend fun save() = withContext(Dispatchers.IO) {
         try {
@@ -123,11 +156,27 @@ class Outbox(file: File) {
         private const val TAG = "Outbox"
         /** 端末とサーバーの時計のずれを見込む幅 */
         private const val CLOCK_SLACK_MS = 2 * 60 * 1000L
+        private const val MAX_USED = 100
 
-        /** 送ったが応答が返らなかった場合に、すでに届いているか */
-        fun alreadyDelivered(item: OutboxItem, recent: List<Message>, myUserId: String?): Boolean = recent.any { m ->
-            m.userId == myUserId && m.content == item.text &&
-                (runCatching { Instant.parse(m.createdAt).toEpochMilli() }.getOrNull() ?: 0L) >= item.createdAt - CLOCK_SLACK_MS
+        /**
+         * 送ったが応答が返らなかった場合に、すでに届いているか。届いていれば、そのメッセージを返す (#66)。
+         * - 送信者と返信先が一致し、[used] (ほかの項目の一致に使ったもの) に入っていないこと
+         * - 添付があるものは、添付の ID の組が一致すること。アップロードの ID は一意で、サーバーは添付済みのファイルの再利用を断るので、
+         *   これで確実に判定できる (時刻は見ない)
+         * - 添付が無いものは、添付の無いメッセージで本文が一致し、「最初に送ろうとした時刻 - 2 分」以降に送られていること。
+         *   同じ本文 (「了解」など) を続けて送った場合の取り違えは、送信の重複を防ぐ ID (S-8) が無い限り残る
+         */
+        fun findDelivered(item: OutboxItem, recent: List<Message>, myUserId: String?, used: Set<String> = emptySet()): Message? {
+            val fileIds = item.fileIds.toSet()
+            return recent.firstOrNull { m ->
+                m.id !in used && m.userId == myUserId && m.replyingMessageId == item.replyTo &&
+                    if (fileIds.isNotEmpty()) {
+                        m.files.mapTo(HashSet()) { it.id } == fileIds
+                    } else {
+                        m.files.isEmpty() && m.content == item.text &&
+                            (runCatching { Instant.parse(m.createdAt).toEpochMilli() }.getOrNull() ?: 0L) >= item.createdAt - CLOCK_SLACK_MS
+                    }
+            }
         }
 
         /** 送信の失敗が、送信待ちに入れるべきもの (ネットワークの失敗) か。サーバーに断られたものは入れない */
