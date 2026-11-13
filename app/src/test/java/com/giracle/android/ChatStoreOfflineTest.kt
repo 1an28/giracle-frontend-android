@@ -65,4 +65,25 @@ class ChatStoreOfflineTest {
         // 取り直しが済んでいない印が残り、次に開いたときに取り直す
         assertTrue(h.fromCache)
     }
+
+    /**
+     * 再接続の後も、開いていないチャンネルの履歴を捨てずに「キャッシュから」として残す (C-2)。
+     * 次に開いたとき、取り直しを待たずにすぐ出せる。最新側に揃っていない履歴は捨てる
+     */
+    @Test fun resyncKeepsOtherChannelsAsCache() = runBlocking {
+        val store = offlineStore()
+        val many = (100 downTo 1).map { msg("$it", "2026-11-13T00:%02d:%02dZ".format(it / 60, it % 60)) }
+        store.restore(
+            Snapshot(
+                userId = "u1", me = User(id = "u1", name = "me"),
+                histories = mapOf("ch" to listOf(msg("2", "2026-11-13T00:00:02Z")), "other" to many),
+            ),
+        )
+        runCatching { store.openChannel("ch") }
+        store.resync()
+        val h = store.history("other").value
+        assertTrue("開いていないチャンネルの履歴が残る", h.loaded)
+        assertTrue("開いたときに取り直す印", h.fromCache)
+        assertEquals("最新側から件数を抑えて残す", (100 downTo 41).map { "$it" }, h.messages.map { it.id })
+    }
 }

@@ -204,14 +204,18 @@ class ChatStore(
         } catch (e: Exception) {
             Log.w(TAG, "resync: reload failed", e)
         }
-        // 開いていないチャンネルの履歴は捨て、開いているチャンネルは最新側を取り直す。
+        // 切れていた間の投稿が抜けているかもしれないので、どのチャンネルも「キャッシュから」の印を付け、開いたときに取り直す。
+        // 開いていないチャンネルも、最新側の履歴は捨てずに残す。次に開いたとき、取り直しを待たずにすぐ出すため
+        // (起動時のスナップショットの復元と同じ扱い。docs/UI_PRINCIPLES.md の C-2、P-1、D-047)。
+        // 以前は捨てており、つなぎ直した後に開くと、中央の回転アイコンで取り直しを待たされた。
+        // 最新側に揃っていない (古い側を読んでいた) 履歴は、続きを読む位置が分からなくなるので捨てる。
         // 開いているチャンネルは、取り直すまで今の表示を残す (fromCache にすると openChannel が取り直す)。
         // 取り直しに失敗しても、表示はそのまま残り、次に開いたときに取り直す。
         // 以前は表示を空にしてから取り直しており、失敗すると例外が購読の外まで抜けてアプリが落ちていた
         val current = currentChannelId
         val others = histories.keys.count { it != current }
         for ((id, flow) in histories) {
-            if (id != current) flow.value = HistoryState()
+            if (id != current) flow.update(::keepAsCache)
         }
         if (current != null) {
             histories[current]?.update { if (it.loaded) it.copy(fromCache = true) else it }
@@ -224,8 +228,19 @@ class ChatStore(
             }
         }
         // 手がかり: つなぎ直した後に、どのチャンネルの履歴をどう扱ったか。e2e はこの行で再同期の終わりを待つ (D-046)
-        Log.i(SYNC_TAG, "resync: current=$current others=$others")
+        Log.i(SYNC_TAG, "resync: current=$current others=$others kept=${histories.count { (id, f) -> id != current && f.value.loaded }}")
     }
+
+    /** 再接続の後、開いていないチャンネルの履歴を、件数を抑えて「キャッシュから」として残す ([resync]) */
+    private fun keepAsCache(s: HistoryState): HistoryState =
+        if (s.loaded && s.atEnd && s.messages.isNotEmpty()) {
+            HistoryState(
+                messages = s.messages.take(KEEP_WHEN_LEFT), atTop = s.atTop && s.messages.size <= KEEP_WHEN_LEFT, atEnd = true,
+                loaded = true, version = s.version + 1, fromCache = true,
+            )
+        } else {
+            HistoryState(version = s.version + 1)
+        }
 
     private suspend fun initialLoadNoWs(userId: String) = coroutineScope {
         listOf(
