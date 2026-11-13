@@ -86,4 +86,23 @@ class ChatStoreOfflineTest {
         assertTrue("開いたときに取り直す印", h.fromCache)
         assertEquals("最新側から件数を抑えて残す", (100 downTo 41).map { "$it" }, h.messages.map { it.id })
     }
+
+    /**
+     * キャッシュ (切れていた間の投稿が抜けているかもしれない) には新着を足さず、既読にもしない (#59 のレビュー)。
+     * 足すと抜けたまま新着だけが続いて見え、既読にすると見ていない投稿まで既読になる
+     */
+    @Test fun cacheIsNotExtendedNorMarkedRead() = runBlocking {
+        val store = offlineStore()
+        store.restore(
+            Snapshot(
+                userId = "u1", me = User(id = "u1", name = "me"),
+                histories = mapOf("ch" to listOf(msg("2", "2026-11-13T00:00:02Z"))),
+                readTimes = mapOf("ch" to "2026-11-13T00:00:01Z"),
+            ),
+        )
+        store.addMessage(msg("9", "2026-11-13T00:00:09Z"))
+        assertEquals("キャッシュに新着を足さない", listOf("2"), store.history("ch").value.messages.map { it.id })
+        store.markRead("ch")
+        assertEquals("キャッシュでは既読にしない", "2026-11-13T00:00:01Z", store.readTimes.value["ch"])
+    }
 }

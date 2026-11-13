@@ -403,10 +403,16 @@ class ChatStore(
     suspend fun loadOlder(channelId: String) {
         val flow = hist(channelId)
         val s = flow.value
-        if (!s.loaded || s.atTop || s.loadingOlder) return
+        // キャッシュの続きは読まない (取り直しで別の範囲に差し替わり、つなぐと抜けができるため)
+        if (!s.loaded || s.atTop || s.loadingOlder || s.fromCache) return
         val oldest = s.messages.lastOrNull() ?: return
         flow.update { it.copy(loadingOlder = true) }
         lock(channelId).withLock {
+            // ロックを待つ間に取り直しで差し替わっていたら、続きを読まない
+            if (flow.value.fromCache || flow.value.messages.lastOrNull()?.id != oldest.id) {
+                flow.update { it.copy(loadingOlder = false) }
+                return
+            }
             try {
                 val r = api.history(channelId, messageIdFrom = oldest.id, fetchLength = 30, direction = "older")
                 mergeSizes(r.imageDimensions)
@@ -427,10 +433,14 @@ class ChatStore(
     suspend fun loadNewer(channelId: String) {
         val flow = hist(channelId)
         val s = flow.value
-        if (!s.loaded || s.atEnd || s.loadingNewer) return
+        if (!s.loaded || s.atEnd || s.loadingNewer || s.fromCache) return
         val newest = s.messages.firstOrNull() ?: return
         flow.update { it.copy(loadingNewer = true) }
         lock(channelId).withLock {
+            if (flow.value.fromCache || flow.value.messages.firstOrNull()?.id != newest.id) {
+                flow.update { it.copy(loadingNewer = false) }
+                return
+            }
             try {
                 val r = api.history(channelId, messageIdFrom = newest.id, fetchLength = 30, direction = "newer")
                 mergeSizes(r.imageDimensions)
@@ -485,7 +495,8 @@ class ChatStore(
      */
     fun markRead(channelId: String) {
         val s = hist(channelId).value
-        if (!s.atEnd) return
+        // キャッシュ (切れていた間の投稿が抜けているかもしれない) の最新で既読にすると、見ていない投稿まで既読になる。取り直してから既読にする
+        if (!s.atEnd || s.fromCache) return
         val newest = s.messages.firstOrNull()?.createdAt ?: return
         val current = readTimes.value[channelId]
         if (current != null && !isAfter(newest, current)) {
@@ -736,7 +747,8 @@ class ChatStore(
     fun addMessage(m: Message) {
         val flow = histories[m.channelId] ?: return
         flow.update { s ->
-            if (!s.loaded || !s.atEnd || s.messages.any { it.id == m.id }) s
+            // キャッシュには足さない (切れていた間の投稿が抜けたまま、新着だけが続いて見えるため。開いたときに取り直す)
+            if (!s.loaded || !s.atEnd || s.fromCache || s.messages.any { it.id == m.id }) s
             else s.copy(messages = listOf(m) + s.messages, version = s.version + 1)
         }
     }
