@@ -5,6 +5,9 @@ import com.giracle.android.data.Outbox
 import com.giracle.android.data.OutboxItem
 import com.giracle.android.data.model.Message
 import com.giracle.android.data.net.ApiException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -89,6 +92,33 @@ class OutboxTest {
         assertFalse("他の人", Outbox.alreadyDelivered(item, listOf(msg("you", "hi", now)), "me"))
         assertFalse("本文が違う", Outbox.alreadyDelivered(item, listOf(msg("me", "ho", now)), "me"))
         assertFalse("ずっと前の同じ本文", Outbox.alreadyDelivered(item, listOf(msg("me", "hi", now - 3_600_000)), "me"))
+    }
+
+    /** #67: 多数のスレッドから同時に add・remove しても、ファイルが壊れず、読み直した件数が合う */
+    @Test fun concurrentAddAndRemoveKeepFileConsistent() = runBlocking {
+        val f = File(dir, "ob5.json").also { it.delete() }
+        val ob = Outbox(f)
+        val keep = 200
+        val drop = 100
+        val added = (0 until keep + drop).map { i ->
+            async(Dispatchers.IO) { ob.add("c", "m$i", emptyList(), null) }
+        }.awaitAll()
+        added.takeLast(drop).map { item -> async(Dispatchers.IO) { ob.remove(item.localId) } }.awaitAll()
+        assertEquals(keep, ob.items.value.size)
+        val reloaded = Outbox(f).items.value
+        assertEquals("読み直した件数", keep, reloaded.size)
+        assertEquals(ob.items.value.map { it.localId }.toSet(), reloaded.map { it.localId }.toSet())
+        assertFalse("一時ファイルが残っていない", File(f.path + ".tmp").exists())
+    }
+
+    @Test fun clearRemovesFile() = runBlocking {
+        val f = File(dir, "ob6.json").also { it.delete() }
+        val ob = Outbox(f)
+        ob.add("c", "1", emptyList(), null)
+        assertTrue(f.exists())
+        ob.clear()
+        assertFalse(f.exists())
+        assertTrue(Outbox(f).items.value.isEmpty())
     }
 
     @Test fun networkFailureClassification() {
