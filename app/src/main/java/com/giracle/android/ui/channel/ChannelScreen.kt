@@ -54,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +84,7 @@ import coil3.compose.AsyncImage
 import com.giracle.android.ui.common.exposeTestTags
 import com.giracle.android.ui.common.TestTags
 import com.giracle.android.data.ChatStore
+import com.giracle.android.data.SendTrace
 import com.giracle.android.data.model.FileAttached
 import com.giracle.android.data.model.Message
 import com.giracle.android.ui.LocalNavigator
@@ -280,8 +282,18 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         // 一覧の先頭に「新しい側を読み込み中」の行があると、位置が 1 つずれる
         val target = i + (if (history.atEnd) 0 else 1)
         // 遠ければ一気に、近ければ動かして (Element X と同じく 10 行を境にする)
-        if (kotlin.math.abs(listState.firstVisibleItemIndex - target) > 10) listState.scrollToItem(target)
-        else listState.animateScrollToItem(target)
+        val jump = kotlin.math.abs(listState.firstVisibleItemIndex - target) > 10
+        // 送信が見えるまでの内訳の記録 (#70)。e2e の reply がこれを読む
+        SendTrace.mark("in_list", "id=$id index=$i first=${listState.firstVisibleItemIndex} target=$target jump=$jump")
+        try {
+            if (jump) listState.scrollToItem(target) else listState.animateScrollToItem(target)
+            SendTrace.mark("scroll_done", "first=${listState.firstVisibleItemIndex}")
+            withFrameNanos { }
+            SendTrace.mark("frame", "first=${listState.firstVisibleItemIndex}")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            SendTrace.mark("scroll_cancelled", "first=${listState.firstVisibleItemIndex}")
+            throw e
+        }
     }
     val onSent: (String) -> Unit = { id ->
         sentId = id

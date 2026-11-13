@@ -311,7 +311,8 @@ class ReleaseAppTest {
 
             // 返す: 未読の始まりのメッセージを右へすべらせて返信する。終わりは、送った返信が画面に見えること
             val reply = "返信-$suffix"
-            UxTask("reply").run {
+            val replyTask = UxTask("reply")
+            replyTask.run {
                 swipeRight(wait(res("channel.message:$firstUnread"), 5_000, "未読の始まりのメッセージ"))
                 wait(res("composer.reply"), 5_000, "返信先の表示")
                 tap(wait(res("composer.input"), 5_000, "入力欄"))
@@ -321,6 +322,7 @@ class ReleaseAppTest {
                 // メッセージの一覧の中だけを探す (一覧の外の入力欄などに残った本文に一致させないため。#57)
                 done(By.res("channel.messages").hasDescendant(By.textContains(reply)), timeoutMs = 8_000)
             }
+            logSendBreakdown(replyTask)
             waitFor("サーバーに返信が届く") { admin.recentTexts(channelId).contains(reply) }
             shot("ux_reply")
 
@@ -425,13 +427,54 @@ class ReleaseAppTest {
     private fun resyncedSince(since: String): Boolean =
         device.executeShellCommand("logcat -d -s GiracleSync:I -T $since.000").lines().any { "resync:" in it }
 
+    /**
+     * 送信を押してから返信が見えるまでの内訳 (#70)。アプリの記録 (SendTrace、タグ GiraclePerf) と e2e の時刻を、
+     * 端末共通の uptimeMillis で並べる。値はすべて e2e が送信を押した時刻からの ms。無い区切りは -1。
+     * - input: アプリが押されたと受け取るまで (click の注入を含む)。click: UiObject2.click() が戻るまで
+     * - http: 送信の HTTP の応答。ws: WebSocket で自分の送信が届いた。in_list: 画面の一覧に載り、送る動きを始めた
+     * - scroll: 送る動きの終わり (cancelled は取り消された時刻)。frame: その次の描画。found: e2e が見つけた
+     */
+    private fun logSendBreakdown(task: UxTask) {
+        val t0 = task.lastAt
+        val phases = mutableMapOf<String, Long>()
+        val detail = mutableMapOf<String, String>()
+        val re = Regex("send phase=(\\w+) t=(\\d+)(.*)")
+        device.executeShellCommand("logcat -d -s $PERF_TAG:I").lines().forEach { line ->
+            val m = re.find(line) ?: return@forEach
+            val t = m.groupValues[2].toLong()
+            // 送信を押す前 (前の送信) の記録は使わない。同じ区切りが複数あれば最初のもの
+            if (t >= t0 && m.groupValues[1] !in phases) {
+                phases[m.groupValues[1]] = t
+                detail[m.groupValues[1]] = m.groupValues[3].trim()
+            }
+        }
+        fun at(p: String) = phases[p]?.let { it - t0 } ?: -1
+        Log.i(TAG, "E2E-RESULT ux net=$uxNet task=reply_breakdown input=${at("tap")} click=${task.lastClickMs} " +
+            "http=${at("http_done")} ws=${at("ws_arrived")} in_list=${at("in_list")} scroll=${at("scroll_done")} " +
+            "cancelled=${at("scroll_cancelled")} frame=${at("frame")} found=${task.foundAt - t0}")
+        Log.i(TAG, "E2E-RESULT ux net=$uxNet task=reply_detail in_list=[${detail["in_list"]}] " +
+            "scroll=[${detail["scroll_done"] ?: detail["scroll_cancelled"]}] frame=[${detail["frame"]}]")
+    }
+
     /** 1 つの作業の手数と時間を数える ([uxTasks]) */
     private inner class UxTask(private val name: String) {
         private var taps = 0
         private var last = 0L
+        /** 最後の「押す」で UiObject2.click() にかかった時間 (#70。e2e 側の待ちを分けるため) */
+        var lastClickMs = 0L
+            private set
+        /** 終わりの状態の要素が見つかった時刻 (uptimeMillis。[lastAt] と同じ時計) */
+        var foundAt = 0L
+            private set
+        /** 最後の操作の時刻 (uptimeMillis) */
+        val lastAt get() = last
 
         private fun mark() { taps++; last = SystemClock.uptimeMillis() }
-        fun tap(o: UiObject2) { mark(); o.click() }
+        fun tap(o: UiObject2) {
+            mark()
+            o.click()
+            lastClickMs = SystemClock.uptimeMillis() - last
+        }
         fun back() { mark(); device.pressBack() }
 
         /** 左端の「戻る」の操作と取り合わないよう、要素の 3 割の位置から右へすべらせる */
@@ -454,11 +497,17 @@ class ReleaseAppTest {
             val conf = Configurator.getInstance()
             val idle = conf.getWaitForIdleTimeout()
             conf.setWaitForIdleTimeout(0)
+            var polls = 0
+            var pollMax = 0L
             val found = try {
                 val end = last + timeoutMs
                 var hit = false
                 while (!hit && SystemClock.uptimeMillis() < end) {
+                    val p0 = SystemClock.uptimeMillis()
                     hit = device.findObject(sel) != null
+                    val p = SystemClock.uptimeMillis() - p0
+                    polls++
+                    if (p > pollMax) pollMax = p
                     if (!hit) SystemClock.sleep(30)
                 }
                 hit
@@ -466,7 +515,9 @@ class ReleaseAppTest {
                 conf.setWaitForIdleTimeout(idle)
             }
             if (found) {
-                Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
+                foundAt = SystemClock.uptimeMillis()
+                // polls: 探した回数。poll_max: 1 回の探索の最長 (判定の粒度。#70)
+                Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=${foundAt - last} polls=$polls poll_max=$pollMax")
                 return
             }
             Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=-1 shown=false")
@@ -666,6 +717,8 @@ class ReleaseAppTest {
 
     companion object {
         private const val TAG = "GiracleE2E"
+        /** アプリの SendTrace のタグ (#70) */
+        private const val PERF_TAG = "GiraclePerf"
         private val ALLOW_BUTTON: BySelector = By.res(Pattern.compile(".*:id/permission_allow_button"))
     }
 }

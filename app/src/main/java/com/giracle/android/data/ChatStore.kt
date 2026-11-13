@@ -722,6 +722,7 @@ class ChatStore(
     private fun onNewMessage(m: Message) {
         val myId = me.value?.id
         val viewing = currentChannelId == m.channelId && appInForeground
+        if (m.userId == myId) SendTrace.mark("ws_arrived", "id=${m.id}")
         addMessage(m)
         ensureUser(m.userId)
         if (m.userId == myId) {
