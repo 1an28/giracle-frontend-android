@@ -15,8 +15,11 @@ gcloud firebase test android models list --filter=form=PHYSICAL
 echo "::endgroup::"
 if [ -z "${DEVICE:-}" ]; then
   gcloud firebase test android models list --filter=form=PHYSICAL --format=json > "$OUT/models.json"
+  # 試験版・廃止予定の版 (tags に beta=NN・deprecated=NN と出る。推測) は除く
   DEVICE=$(jq -r '[.[] | select((.brand // "" | ascii_downcase) == "google")
-      | {id, v: ([.supportedVersionIds[] | tonumber] | max)} | select(.v >= 28)]
+      | (.tags // []) as $t
+      | {id, v: ([.supportedVersionIds[] | select(("beta=" + .) as $b | ("deprecated=" + .) as $d | ($t | index($b) or index($d)) | not) | tonumber] | max)}
+      | select(.v != null and .v >= 28)]
       | sort_by(-.v, .id) | .[0] // empty | "model=\(.id),version=\(.v)"' "$OUT/models.json")
   [ -n "$DEVICE" ] || { echo "::error::使える実機が見つからない"; exit 1; }
 fi
@@ -27,7 +30,7 @@ gcloud firebase test android run \
   --type instrumentation \
   --app "$APP_APK" \
   --test "$TEST_APK" \
-  --device "$DEVICE,locale=ja,orientation=portrait" \
+  --device "$DEVICE,orientation=portrait" \
   --test-targets "class $PKG.StartupBenchmark" \
   --environment-variables "appPackage=io.github.u1an28.giracle.kotlin,login=false,additionalTestOutputDir=/sdcard/Download,no-isolated-storage=true" \
   --directories-to-pull /sdcard/Download \
@@ -42,8 +45,11 @@ set -e
 dir=$(grep -oE 'test-lab-[a-z0-9-]+/[^]/ ]+' "$OUT/gcloud.txt" | head -1 || true)
 if [ -z "$dir" ]; then echo "::error::結果の置き場所が分からない (gcloud の終了コード $status)"; exit 1; fi
 echo "results: gs://$dir"
-gsutil -m cp -r "gs://$dir" "$OUT/results" > /dev/null 2>&1 \
-  || echo "::warning::結果を取り出せなかった (サービスアカウントの権限を確かめる)"
+# 失敗の原因が分かるよう、エラーは捨てずにログへ出す
+if ! gcloud storage cp -r "gs://$dir" "$OUT/results" > "$OUT/cp.txt" 2>&1; then
+  tail -n 40 "$OUT/cp.txt"
+  echo "::error::結果を取り出せなかった (上のエラーを見る)"
+fi
 json=$(find "$OUT/results" -name '*benchmarkData.json' 2>/dev/null | head -1 || true)
 if [ -n "$json" ]; then
   echo "::group::benchmarkData.json"
@@ -57,8 +63,10 @@ if [ -n "$json" ]; then
         (.sampledMetrics // {} | to_entries[] | "  \(.key): P50 \(.value.P50) / P90 \(.value.P90) / P95 \(.value.P95) / P99 \(.value.P99)"))' "$json"
   } | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
 else
-  echo "::warning::benchmarkData.json が無い。計測の出力とログの末尾を出す"
+  echo "::error::benchmarkData.json が無い。計測の出力とログの末尾を出す"
   find "$OUT/results" -name 'instrumentation.results' -exec tail -n 60 {} \; 2>/dev/null || true
   find "$OUT/results" -name 'logcat' -exec sh -c 'grep -E "Benchmark|TestRunner|AndroidRuntime|GiracleNav|GiracleUncaught" "$1" | tail -n 80' _ {} \; 2>/dev/null || true
+  # 計測値が出ないまま毎日「成功」にならないよう、失敗で終える
+  [ "$status" != 0 ] || status=1
 fi
 if [ "$status" != 0 ]; then echo "::error::Test Lab の実行が失敗した (gcloud の終了コード $status)"; exit "$status"; fi

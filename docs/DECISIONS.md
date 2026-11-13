@@ -696,5 +696,5 @@
   - Macrobenchmark を Test Lab で動かす例: android/performance-samples の `.github/workflows/firebase_test_lab.yml`
     (`--directories-to-pull /sdcard/Download`、`additionalTestOutputDir=/sdcard/Download`、`no-isolated-storage=true`)。原文を読んだ。
 - **確かめていないこと**: 実際に Test Lab で動くか (Secrets が無いので一度も動かしていない)。特に、self-instrumenting の計測用 APK を Test Lab が受け付けるか、
-  サービスアカウントで無料のバケットから結果を取り出せるか、自動で選ぶ端末が使えるか、`locale=ja` が使えるか。
+  サービスアカウントで無料のバケットから結果を取り出せるか、自動で選ぶ端末が使えるか (試験版・廃止予定の版を tags で除いているが、tags の形は推測)。
   Spark の枠の数が今も同じか。Test Lab の終わりの日付。
