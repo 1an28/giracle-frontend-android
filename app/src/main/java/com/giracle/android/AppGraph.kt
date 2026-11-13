@@ -72,9 +72,8 @@ class AppGraph(context: Context) {
     val outbox = com.giracle.android.data.Outbox(File(appContext.filesDir, "outbox.json"))
 
     private val outboxSender = object : com.giracle.android.data.Outbox.Sender {
-        override suspend fun send(item: com.giracle.android.data.OutboxItem) {
-            store.send(item.channelId, item.text, item.fileIds, item.replyTo)
-        }
+        override suspend fun send(item: com.giracle.android.data.OutboxItem): String =
+            store.send(item.channelId, item.text, item.fileIds, item.replyTo).id
         override suspend fun recent(channelId: String) = api.history(channelId, fetchLength = 30).history
         override val myUserId: String? get() = store.me.value?.id ?: prefs.userId
     }
