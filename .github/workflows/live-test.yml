@@ -50,15 +50,19 @@ jobs:
             grep -o '<testsuite [^>]*>' "$f"
             grep -q 'skipped="0"' "$f" || { echo "$c にスキップされたテストがある" >&2; exit 1; }
           done
-      - name: Touch targets smaller than 48dp (D-045, report only)
+      - name: Touch targets smaller than 48dp (D-045, D-054)
         if: always()
         run: |
           f=app/build/test-results/testDebugUnitTest/TEST-com.giracle.android.UiScreenshotTest.xml
           [ -f "$f" ] || exit 0
+          # Issue にした既知の不足 (TouchTargets.kt の KNOWN_SHORTFALLS) は数だけ出し、失敗にしない
+          known=$(grep -o 'TOUCH-TARGET-KNOWN [^&<]*' "$f" | sed 's/^TOUCH-TARGET-KNOWN [^:]*: //' | sort -u | wc -l)
+          echo "既知の不足 (Issue にしたもの): $known 種類"
           lines=$(grep -o 'TOUCH-TARGET [^&<]*' "$f" | sort -u || true)
           if [ -z "$lines" ]; then echo "押せる範囲が 48dp に足りない要素は無い"; exit 0; fi
           echo "$lines"
-          echo "::notice::押せる範囲が 48dp に足りない要素: $(echo "$lines" | sed 's/^TOUCH-TARGET [^:]*: //' | sort -u | wc -l) 種類 (D-045)"
+          echo "::error::押せる範囲が 48dp に足りない要素: $(echo "$lines" | sed 's/^TOUCH-TARGET [^:]*: //' | sort -u | wc -l) 種類。直すか、直し方を Issue にして TouchTargets.kt の KNOWN_SHORTFALLS に足す (D-054)"
+          exit 1
       - uses: actions/upload-artifact@v7
         if: always()
         with:

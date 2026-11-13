@@ -75,6 +75,7 @@ import com.giracle.android.ui.common.Avatar
 import com.giracle.android.ui.common.Badge
 import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.LocalStore
+import com.giracle.android.ui.common.PressArea
 import com.giracle.android.ui.common.dayLabel
 import com.giracle.android.ui.common.friendlyTime
 import com.giracle.android.ui.common.humanSize
@@ -440,20 +441,27 @@ private fun FileCard(f: FileAttached, cb: MessageCallbacks, onOpen: (() -> Unit)
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun Reactions(m: Message, cb: MessageCallbacks) {
-    FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // 見た目 (高さ 28dp) はそのままで、押せる範囲を 48dp にする。リアクションの列のすぐ下は次のメッセージの行で、
+    // Compose の自動の広がりは下の行に取られるため (#68)。見た目どうしの縦の間は 20dp になる
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         for (r in m.reactionSummary) {
             val mine = r.includingYou
-            Row(
-                Modifier.testTag(TestTags.reaction(m.id, r.emojiCode))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (mine) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
-                    .border(1.dp, if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-                    .combinedClickable(onClick = { cb.onToggleReaction(m, r.emojiCode) }, onLongClick = { cb.onReactionLongPress(m, r.emojiCode) })
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                EmojiView(r.emojiCode, 18.dp)
-                Text(r.count.toString(), style = MaterialTheme.typography.labelMedium)
+            PressArea(
+                onClick = { cb.onToggleReaction(m, r.emojiCode) },
+                onLongClick = { cb.onReactionLongPress(m, r.emojiCode) },
+                modifier = Modifier.testTag(TestTags.reaction(m.id, r.emojiCode)),
+            ) { visual ->
+                Row(
+                    Modifier.clip(RoundedCornerShape(12.dp))
+                        .background(if (mine) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer)
+                        .border(1.dp, if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                        .then(visual)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    EmojiView(r.emojiCode, 18.dp)
+                    Text(r.count.toString(), style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }

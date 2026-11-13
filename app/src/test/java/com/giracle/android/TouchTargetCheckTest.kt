@@ -16,6 +16,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -108,5 +115,40 @@ class TouchTargetCheckTest {
             }
         }
         assertEquals(listOf("chip: 60x28dp (fab と近い)"), rule.smallTouchTargets(rule.density))
+    }
+
+    /**
+     * 文の中のリンクは数えない (WCAG 2.2 の例外「Inline」、D-054)。本文の 2 行に 1 つずつリンクがあり、行の間が狭い場合。
+     * リンクが押せる要素として意味情報に出ていること (検査がリンクを見たうえで外していること) も確かめる。
+     */
+    @Test fun inlineLinksAreExempt() {
+        rule.setContent {
+            Column {
+                Text(buildAnnotatedString {
+                    withLink(LinkAnnotation.Clickable("a") {}) { append("https://example.com") }
+                    append("\n")
+                    withLink(LinkAnnotation.Url("https://example.org")) { append("https://example.org") }
+                })
+                Box(Modifier.fillMaxWidth().height(20.dp).clickable { }.testTag("rowBelow"))
+            }
+        }
+        val pressable = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick), useUnmergedTree = true).fetchSemanticsNodes()
+        assertTrue("リンクが押せる要素として出ていない (${pressable.size} 件)", pressable.size >= 3)
+        // リンクの下の 20dp の行は (リンクと近いので) 数えるが、リンクそのものは数えない
+        val found = rule.smallTouchTargets(rule.density)
+        assertTrue(found.toString(), found.size == 1 && found[0].startsWith("rowBelow: 400x20dp"))
+    }
+
+    /** Issue にした既知の不足は、既知と分かる印を付けて返す (CI は失敗にしない) */
+    @Test fun knownShortfallsAreMarked() {
+        rule.setContent {
+            Column {
+                Box(Modifier.fillMaxWidth().height(24.dp).clickable { }.testTag("channel.message:a"))
+                Box(Modifier.fillMaxWidth().height(24.dp).clickable { }.testTag("channel.message:b"))
+            }
+        }
+        val found = rule.smallTouchTargets(rule.density)
+        assertEquals(2, found.size)
+        assertTrue(found.toString(), found.all { it.startsWith("$KNOWN_PREFIX(#75) channel.message:") })
     }
 }
