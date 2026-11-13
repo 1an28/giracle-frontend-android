@@ -65,6 +65,12 @@ show_clues() {
 }
 # am instrument は失敗しても終了コードが 0 なので、出力で判断する
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
+# 条件付きの確認 (assume) は、飛ばされても「OK」になる。指定したのに動いていなければ失敗にする
+echo "::group::e2e の結果の印"; grep -o "E2E-RESULT .*" "$OUT/logcat.txt"; echo "::endgroup::"
+if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT lan_test=done" "$OUT/logcat.txt"; then
+  echo "::error::LAN のサーバーでの確認 (lanServerPermissionAndOfflineSend) が最後まで動いていない (飛ばされた?)"
+  status=1
+fi
 [ $status = 0 ] || show_clues
 if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"

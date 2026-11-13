@@ -296,14 +296,19 @@ class ReleaseAppTest {
             shell("cmd connectivity airplane-mode disable")
         }
         // 3. 電波が戻ると、送信待ちが消えて 1 件だけ届く
+        val restoredAt = SystemClock.uptimeMillis()
         if (!device.wait(Until.gone(res("composer.outbox")), 90_000)) { shot("outbox_stuck"); fail("電波が戻っても送信待ちが消えない") }
         waitFor("電波が戻った後、サーバーに届く", 30_000) { admin.recentTexts(channelId).contains(offline) }
+        // 電波を戻してから届くまでの時間 (D-034 の効果を見るため)
+        Log.i(TAG, "E2E-RESULT outbox_delivered_ms=${SystemClock.uptimeMillis() - restoredAt}")
         SystemClock.sleep(3_000)
         val count = admin.recentTexts(channelId).count { it == offline }
         assertTrue("送信待ちのメッセージが $count 件届いた (1 件のはず)", count == 1)
         wait(By.textContains(offline), 15_000, "送信待ちだったメッセージの表示")
         shot("outbox_sent")
         assertAlive("送信待ちを送った後")
+        // e2e-run.sh が、飛ばされずに最後まで動いたことをこの印で確かめる
+        Log.i(TAG, "E2E-RESULT lan_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
     }
 
     /** 共有するファイル (64x64 の PNG と、短い文書) をキャッシュの share/ に作る */
