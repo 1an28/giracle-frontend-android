@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val channelId = intent.getStringExtra(EXTRA_CHANNEL) ?: return
+        if (intent.action == ACTION_DISMISSED) {
+            Notifier.forgetChannel(channelId)
+            return
+        }
         val messageId = intent.getStringExtra(EXTRA_MESSAGE)
         val tag = intent.getStringExtra(EXTRA_TAG)
         val reply = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_REPLY)?.toString()?.trim()
@@ -65,6 +69,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         private const val TAG = "GiracleNotifAction"
         const val ACTION_REPLY = "com.giracle.android.action.REPLY"
         const val ACTION_MARK_READ = "com.giracle.android.action.MARK_READ"
+        const val ACTION_DISMISSED = "com.giracle.android.action.DISMISSED"
         const val KEY_REPLY = "reply"
         const val EXTRA_CHANNEL = "channelId"
         const val EXTRA_MESSAGE = "messageId"

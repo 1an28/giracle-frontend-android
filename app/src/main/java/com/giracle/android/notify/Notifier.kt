@@ -182,6 +182,8 @@ object Notifier {
                 // 返信は入力した文字を受け取るため、書き換え可能 (MUTABLE) にする必要がある
                 PendingIntent.FLAG_UPDATE_CURRENT or (if (act == NotificationActionReceiver.ACTION_REPLY) PendingIntent.FLAG_MUTABLE else PendingIntent.FLAG_IMMUTABLE),
             )
+            // 通知を払って消したら、覚えている会話も忘れる。以前は忘れず、次の通知に払ったはずの発言まで並んでいた
+            builder.setDeleteIntent(action(NotificationActionReceiver.ACTION_DISMISSED, id * 2 + 1_000_000))
             val input = RemoteInput.Builder(NotificationActionReceiver.KEY_REPLY).setLabel("返信").build()
             builder.addAction(
                 NotificationCompat.Action.Builder(R.drawable.ic_stat_message, "返信", action(NotificationActionReceiver.ACTION_REPLY, id * 2))
@@ -212,6 +214,14 @@ object Notifier {
         val last = synchronized(conversations) { lastNotices[channelId]?.takeIf { conversations.containsKey(channelId) } } ?: return false
         post(context, last, ownReply = text)
         return true
+    }
+
+    /** 通知が払って消されたとき。通知はもう無いので、覚えている会話だけ忘れる */
+    fun forgetChannel(channelId: String) {
+        synchronized(conversations) {
+            conversations.remove(channelId)
+            lastNotices.remove(channelId)
+        }
     }
 
     /** チャンネルの通知を消す (そのチャンネルを開いたとき・通知のボタンで操作したとき) */
