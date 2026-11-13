@@ -5,11 +5,13 @@ import androidx.compose.runtime.Immutable
 import com.giracle.android.data.model.Message
 import com.giracle.android.data.net.ApiException
 import com.giracle.android.data.net.AppJson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
@@ -38,8 +40,10 @@ data class OutboxItem(
  * - つながったら (WebSocket の接続) 古い順に送る。途中でまたネットワークで失敗したら、そこで止める
  * - サーバーには送信の重複を防ぐ仕組みが無い (S-8) ので、送り直す前に最近の履歴を見て、
  *   自分が同じ本文をその後に送っていれば「届いていた」とみなして送らない
+ * - 保存は [SafeFile] で 1 本にまとめ、メインスレッドの外で書く (#67)。書くのは書く時点の最新の中身
  */
-class Outbox(private val file: File) {
+class Outbox(file: File) {
+    private val file = SafeFile(file)
     private val _items = MutableStateFlow(load())
     val items: StateFlow<List<OutboxItem>> = _items
     private val mutex = Mutex()
@@ -52,18 +56,19 @@ class Outbox(private val file: File) {
         val myUserId: String?
     }
 
-    fun add(channelId: String, text: String, fileIds: List<String>, replyTo: String?, now: Long = System.currentTimeMillis()): OutboxItem {
+    suspend fun add(channelId: String, text: String, fileIds: List<String>, replyTo: String?, now: Long = System.currentTimeMillis()): OutboxItem {
         val item = OutboxItem(UUID.randomUUID().toString(), channelId, text, fileIds, replyTo, now)
         _items.update { it + item }
         save()
         return item
     }
 
-    fun remove(localId: String) {
+    suspend fun remove(localId: String) {
         _items.update { l -> l.filterNot { it.localId == localId } }
         save()
     }
 
+    /** ログアウトのときに呼ぶ。後から走る保存は空の一覧を書くので、前の内容は戻らない */
     fun clear() {
         _items.value = emptyList()
         file.delete()
@@ -102,15 +107,16 @@ class Outbox(private val file: File) {
     }
 
     private fun load(): List<OutboxItem> = runCatching {
-        if (!file.exists()) emptyList() else AppJson.decodeFromString(ListSerializer(OutboxItem.serializer()), file.readText())
-    }.getOrDefault(emptyList())
+        file.readText()?.let { AppJson.decodeFromString(ListSerializer(OutboxItem.serializer()), it) } ?: emptyList()
+    }.onFailure { Log.w(TAG, "load failed", it) }.getOrDefault(emptyList())
 
-    private fun save() {
-        runCatching {
-            val tmp = File(file.path + ".tmp")
-            tmp.writeText(AppJson.encodeToString(ListSerializer(OutboxItem.serializer()), _items.value))
-            tmp.renameTo(file)
-        }.onFailure { Log.w(TAG, "save failed", it) }
+    /** 今の一覧を保存する。同時に呼ばれても [SafeFile] が順に書き、書く直前の最新の一覧を書く */
+    private suspend fun save() = withContext(Dispatchers.IO) {
+        try {
+            file.write { AppJson.encodeToString(ListSerializer(OutboxItem.serializer()), _items.value) }
+        } catch (e: IOException) {
+            Log.w(TAG, "save failed", e)
+        }
     }
 
     companion object {
