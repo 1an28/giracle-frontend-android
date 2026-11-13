@@ -207,9 +207,12 @@ class GiracleApi(private val client: OkHttpClient, @Volatile var endpoint: Endpo
         callUnit("POST", "message/read-time/update", obj("channelId" to channelId, "readTime" to readTime))
 
     suspend fun send(channelId: String, text: String, fileIds: List<String>, replyingMessageId: String?): Message {
-        val res = raw("POST", "message/send", obj("channelId" to channelId, "message" to text, "fileIds" to fileIds, "replyingMessageId" to replyingMessageId))
-        // 応答の本文を受け取った時点 (メインスレッドに戻る前)。通信と、戻るまでの待ちを分ける (#70)
-        com.giracle.android.data.SendTrace.mark("http_body")
+        // 応答の本文を読み終えた時点を、メインスレッドに戻る前 (IO のスレッド) で記録する。通信と、戻るまでの待ちを分ける (#70)。
+        // IO の中で呼ぶと、応答を待った後の続きも IO で動く (呼んだ側がメインだと、本文を読む前後で 2 回メインに戻る)
+        val res = withContext(Dispatchers.IO) {
+            raw("POST", "message/send", obj("channelId" to channelId, "message" to text, "fileIds" to fileIds, "replyingMessageId" to replyingMessageId))
+                .also { com.giracle.android.data.SendTrace.mark("http_body") }
+        }
         return withContext(Dispatchers.Default) { AppJson.decodeFromString(ApiResponse.serializer(Message.serializer()), res).data }
     }
 
