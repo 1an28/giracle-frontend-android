@@ -200,6 +200,35 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         if (firstUnread > 2) listState.scrollToItem(firstUnread - 2)
     }
 
+    // ---- 未読の始まりへ戻る (docs/UI_PRINCIPLES.md の C-5) ----
+    // 未読の始まり (開いた時点の既読より新しい、いちばん古いメッセージ) の、一覧での位置。読み込んでいなければ -1
+    val unreadIndex by remember(channelId) {
+        derivedStateOf {
+            val before = readBefore[channelId]
+            if (before.isNullOrEmpty()) -1
+            else {
+                val i = history.messages.indexOfLast { ChatStore.isAfter(it.createdAt, before) }
+                // 一覧の先頭に「新しい側を読み込み中」の行があると、位置が 1 つずれる
+                if (i < 0) -1 else i + (if (history.atEnd) 0 else 1)
+            }
+        }
+    }
+    // 一度画面に出たか。出た後は、上 (古い側) へ読み進めて未読の始まりが下に隠れたときだけ出す
+    var unreadSeen by remember(channelId) { mutableStateOf(false) }
+    val unreadPlace by remember(channelId) {
+        derivedStateOf {
+            val i = unreadIndex
+            val visible = listState.layoutInfo.visibleItemsInfo
+            when {
+                i < 0 || visible.isEmpty() -> UnreadPlace.None
+                visible.any { it.index == i } -> UnreadPlace.Visible
+                i < visible.first().index -> UnreadPlace.Below
+                else -> UnreadPlace.Above
+            }
+        }
+    }
+    LaunchedEffect(unreadPlace) { if (unreadPlace == UnreadPlace.Visible) unreadSeen = true }
+
     // ---- ページング: 端に近づいたら続きを読む ----
     LaunchedEffect(channelId) {
         snapshotFlow {
@@ -312,16 +341,33 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
                         }
                     }
                     val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 10 } }
-                    if (!history.atEnd || showJump) {
-                        SmallFloatingActionButton(
-                            onClick = {
-                                scope.launch {
-                                    if (!store.history(channelId).value.atEnd) runCatching { store.jumpToLatest(channelId) }
-                                    listState.scrollToItem(0)
-                                }
-                            },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                        ) { Icon(AppIcons.ArrowDown, "最新へ") }
+                    // 未読の始まりが下に隠れたとき (上へ読み進めた後) と、まだ一度も見ていないのに画面の外にあるとき
+                    val showUnread = unreadPlace == UnreadPlace.Below || (unreadPlace == UnreadPlace.Above && !unreadSeen)
+                    Column(
+                        Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (showUnread) {
+                            SmallFloatingActionButton(
+                                onClick = {
+                                    // 開いたときと同じ位置 (未読の始まりの少し下まで見える) へ
+                                    scope.launch { listState.scrollToItem((unreadIndex - 2).coerceAtLeast(0)) }
+                                },
+                                modifier = Modifier.testTag(TestTags.CHANNEL_JUMP_UNREAD),
+                            ) { Text("未読の始まりへ", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelLarge) }
+                        }
+                        if (!history.atEnd || showJump) {
+                            SmallFloatingActionButton(
+                                onClick = {
+                                    scope.launch {
+                                        if (!store.history(channelId).value.atEnd) runCatching { store.jumpToLatest(channelId) }
+                                        listState.scrollToItem(0)
+                                    }
+                                },
+                                modifier = Modifier.testTag(TestTags.CHANNEL_JUMP_LATEST),
+                            ) { Icon(AppIcons.ArrowDown, "最新へ") }
+                        }
                     }
                 }
             }
@@ -560,3 +606,6 @@ fun download(ctx: Context, url: String, f: FileAttached, token: String?) {
         ctx.toast("ダウンロードできません: ${e.message}")
     }
 }
+
+/** 未読の始まりが、画面のどこにあるか (一覧は新しいものが下) */
+private enum class UnreadPlace { None, Visible, Above, Below }
