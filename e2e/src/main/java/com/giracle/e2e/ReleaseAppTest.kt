@@ -53,6 +53,8 @@ class ReleaseAppTest {
     private var step = 0
 
     @Before fun setUp() {
+        // 前のテストが通知欄を開いたまま失敗しても、次のテストの画面を覆わないよう閉じる (巻き添えの失敗を防ぐ)
+        runCatching { shell("cmd statusbar collapse"); device.pressHome() }
         // 管理者で招待コードを作り、相手役 (bob) を登録する。確認用のチャンネルを作り、2 人とも参加する
         admin.signIn(adminUser, adminPass)
         val invite = "e2e$suffix"
@@ -239,6 +241,7 @@ class ReleaseAppTest {
         if (pn == null) {
             // 手がかり: アプリの通知の一覧と、アプリのプロセスがあるか
             Log.w(TAG, "notifications:\n" + shell("dumpsys notification --noredact").lines().filter { pkg in it || "android.title" in it || "android.text" in it }.take(40).joinToString("\n"))
+            device.pressBack()
             fail("プッシュ通知が届かない (プロセスを終わらせた: $killed、今のプロセス: ${shell("pidof $pkg").trim()})")
         }
         device.pressBack()
