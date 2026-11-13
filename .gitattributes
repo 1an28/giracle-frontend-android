@@ -1,5 +1,5 @@
 # 追記だけの記録は、手元の git merge で両方の追記を残す (D-052)。
-# GitHub の判定 (mergeable) がこの設定を使うかは確かめていない。マージ前は手元で main を取り込む (CLAUDE.md)。
+# GitHub の判定 (mergeable) がこの設定を使うかは確かめていない。マージ前は手元で main を取り込む (docs/DEVELOPMENT.md の「PR をマージまで進める」)。
 # 既存の行を両方が書き換えたときも競合にならず新旧が並ぶので、取り込んだ後に差分を見る。
 # 書き換える文書 (ROADMAP.md など) には付けない (黙って両方残ると、古い内容が残るため)。
 docs/DECISIONS.md merge=union
