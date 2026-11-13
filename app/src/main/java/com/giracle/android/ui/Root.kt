@@ -73,7 +73,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun Root(graph: AppGraph, pendingOpen: MutableState<Pair<String, String?>?>) {
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
-    GiracleTheme(theme = settings.theme, fontScale = settings.fontScale) {
+    GiracleTheme(theme = settings.theme, fontScale = settings.fontScale, dynamicColor = settings.dynamicColor) {
         // testTag を resource-id として外から見えるようにする (D-016)
         Surface(Modifier.fillMaxSize().exposeTestTags(), color = MaterialTheme.colorScheme.background) {
             val phase by graph.phase.collectAsStateWithLifecycle()

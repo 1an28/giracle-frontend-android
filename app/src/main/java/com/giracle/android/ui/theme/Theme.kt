@@ -51,8 +51,11 @@ private val Dark = darkColorScheme(
     error = Color(0xFFF87171),
 )
 
+/** 壁紙から作った色を使えるか (Android 12 以降) */
+fun supportsDynamicColor(): Boolean = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+
 @Composable
-fun GiracleTheme(theme: String = "system", fontScale: Float = 1f, content: @Composable () -> Unit) {
+fun GiracleTheme(theme: String = "system", fontScale: Float = 1f, dynamicColor: Boolean = false, content: @Composable () -> Unit) {
     val dark = when (theme) {
         "light" -> false
         "dark" -> true
@@ -60,6 +63,13 @@ fun GiracleTheme(theme: String = "system", fontScale: Float = 1f, content: @Comp
     }
     val density = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale * fontScale)) {
-        MaterialTheme(colorScheme = if (dark) Dark else Light, content = content)
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val scheme = when {
+            dynamicColor && supportsDynamicColor() ->
+                if (dark) androidx.compose.material3.dynamicDarkColorScheme(ctx) else androidx.compose.material3.dynamicLightColorScheme(ctx)
+            dark -> Dark
+            else -> Light
+        }
+        MaterialTheme(colorScheme = scheme, content = content)
     }
 }

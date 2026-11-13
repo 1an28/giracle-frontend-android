@@ -57,7 +57,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.giracle.android.data.model.Channel
 import com.giracle.android.data.net.WsClient
 import com.giracle.android.ui.LocalNavigator
+import kotlinx.coroutines.launch
 import com.giracle.android.ui.PendingShare
+import com.giracle.android.ui.common.toast
 import com.giracle.android.ui.Screen
 import com.giracle.android.ui.common.AppIcons
 import com.giracle.android.ui.common.Avatar
@@ -83,6 +85,30 @@ fun HomeScreen(loading: Boolean) {
     val roles by store.roles.collectAsStateWithLifecycle()
     val wsState by graph.ws.state.collectAsStateWithLifecycle()
     var reorder by rememberSaveable { mutableStateOf(false) }
+    var confirmReadAll by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    if (confirmReadAll) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmReadAll = false },
+            title = { Text("すべて既読にする") },
+            text = { Text("未読のあるチャンネル (${hasNew.count { it.value }} 個) をすべて既読にします。") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        confirmReadAll = false
+                        // 途中でホームから離れても (チャンネルを開くなど) 続ける
+                        val appCtx = ctx.applicationContext
+                        graph.scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                            val failed = store.markAllRead()
+                            if (failed > 0) appCtx.toast("$failed 個のチャンネルを既読にできませんでした")
+                        }
+                    },
+                    modifier = Modifier.testTag(TestTags.HOME_READ_ALL_CONFIRM),
+                ) { Text("既読にする") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmReadAll = false }) { Text("キャンセル") } },
+        )
+    }
     var order by remember { mutableStateOf(graph.prefs.channelOrder) }
 
     val joinedIds = me?.channelJoin?.map { it.channelId }?.toSet() ?: emptySet()
@@ -100,6 +126,9 @@ fun HomeScreen(loading: Boolean) {
                     Text(server.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
                 },
                 actions = {
+                    if (hasNew.any { it.value }) {
+                        IconButton(onClick = { confirmReadAll = true }, modifier = Modifier.testTag(TestTags.HOME_READ_ALL)) { Icon(AppIcons.DoneAll, "すべて既読にする") }
+                    }
                     IconButton(onClick = { nav.push(Screen.Search()) }) { Icon(Icons.Default.Search, "検索") }
                     IconButton(onClick = { nav.push(Screen.Settings) }, modifier = Modifier.testTag(TestTags.HOME_SETTINGS).clearAndSetSemantics { contentDescription = "設定"; role = Role.Button }) {
                         me?.let { Avatar(it.id, size = 30.dp) } ?: Icon(Icons.Default.Settings, "設定")

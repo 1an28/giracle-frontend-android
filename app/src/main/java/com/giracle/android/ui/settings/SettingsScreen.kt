@@ -175,6 +175,9 @@ private fun ColumnScope.DisplayTab() {
             FilterChip(s.theme == k, { graph.prefs.updateSettings { it.copy(theme = k) } }, label = { Text(l) })
         }
     }
+    if (com.giracle.android.ui.theme.supportsDynamicColor()) {
+        SwitchRow("壁紙の色を使う", s.dynamicColor, "端末の壁紙から作った色 (Material You) で表示します") { v -> graph.prefs.updateSettings { it.copy(dynamicColor = v) } }
+    }
     Text("メッセージの間隔: ${s.messageGapLevel}", style = MaterialTheme.typography.titleSmall)
     Slider(s.messageGapLevel.toFloat(), { v -> graph.prefs.updateSettings { it.copy(messageGapLevel = v.toInt()) } }, valueRange = 0f..6f, steps = 5)
     Text("URL プレビューの説明文: ${s.maxUrlPreviewTextLength} 文字まで", style = MaterialTheme.typography.titleSmall)
