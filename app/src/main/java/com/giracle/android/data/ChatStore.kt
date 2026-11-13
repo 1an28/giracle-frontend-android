@@ -100,6 +100,8 @@ class ChatStore(
     private val shouldConnect: () -> Boolean = { true },
 ) {
     val me = MutableStateFlow<User?>(null)
+    /** 前回の内容 (スナップショット) を戻したか。読み込みに失敗したとき、画面全体の失敗にせず前回の内容を出す判断に使う (#82) */
+    val restoredFromSnapshot = MutableStateFlow(false)
     val serverConfig = MutableStateFlow(ServerConfig())
     val channels = MutableStateFlow<List<Channel>>(emptyList())
     val users = MutableStateFlow<Map<String, User>>(emptyMap())
@@ -278,6 +280,7 @@ class ChatStore(
     fun restore(s: Snapshot) {
         if (me.value != null) return
         Log.i(SYNC_TAG, "restore: histories=${s.histories.size}")
+        restoredFromSnapshot.value = true
         me.value = s.me
         serverConfig.value = s.server
         channels.value = s.channels

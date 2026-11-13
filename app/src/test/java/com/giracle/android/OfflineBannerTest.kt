@@ -28,7 +28,7 @@ class OfflineBannerTest {
         var loading by mutableStateOf(false)
         var retried = 0
         rule.setContent { OfflineBanner(loading = loading, onRetry = { retried++; loading = true }) }
-        rule.onNodeWithText("オフライン", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("前回の内容", substring = true).assertIsDisplayed()
         assertEquals(emptyList<String>(), rule.smallTouchTargets(rule.density))
         rule.onNodeWithTag(TestTags.OFFLINE_RETRY).performClick()
         assertEquals(1, retried)

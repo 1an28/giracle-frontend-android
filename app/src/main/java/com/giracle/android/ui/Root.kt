@@ -100,7 +100,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     val ctx = LocalContext.current
     val store = LocalStore.current
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
-    val me by store.me.collectAsStateWithLifecycle()
+    val restored by store.restoredFromSnapshot.collectAsStateWithLifecycle()
     val loading by graph.loading.collectAsStateWithLifecycle()
 
     // 通知の許可 (Android 13+)。初回ログイン時に 1 度だけ尋ねる
@@ -162,7 +162,8 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
             // 読み込みに失敗しても、前回の内容 (スナップショット) があれば出し続け、上の帯で知らせる (#82、P-2)。
             // 画面全体を失敗の表示にするのは、出せる内容が何も無いときだけ
             val failed = !p.ready && p.error != null
-            if (failed && me == null) {
+            // me の有無では決めない (ログイン直後に、一部の読み込みだけ成功して me が入る場合がある)
+            if (failed && !restored) {
                 LoadError(p.error!!, loading = loading, onRetry = graph::retryLoad)
             } else Column(Modifier.fillMaxSize()) {
                 if (failed) OfflineBanner(loading = loading, onRetry = graph::retryLoad)
@@ -259,7 +260,7 @@ internal fun OfflineBanner(loading: Boolean, onRetry: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (loading) "サーバーにつないでいます…" else "オフライン — 前回の内容を表示しています。つながったら更新します",
+                if (loading) "サーバーにつないでいます…" else "サーバーにつながりません — 前回の内容を表示しています。つながったら更新します",
                 Modifier.weight(1f).padding(vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
