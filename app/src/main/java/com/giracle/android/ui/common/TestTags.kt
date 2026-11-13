@@ -54,6 +54,9 @@ object TestTags {
 
     // チャンネル
     const val CHANNEL_MESSAGES = "channel.messages"
+    /** 「最新へ」と「未読の始まりへ」のボタン */
+    const val CHANNEL_JUMP_LATEST = "channel.jump_latest"
+    const val CHANNEL_JUMP_UNREAD = "channel.jump_unread"
     fun message(messageId: String) = "channel.message:$messageId"
     fun reaction(messageId: String, emojiCode: String) = "channel.reaction:$messageId:$emojiCode"
     /** 添付画像。読み込みが済むと「channel.image_loaded:」に変わる */
