@@ -469,11 +469,13 @@ fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () 
         }
         // INEXACT: 元より大きくは読まない (小さい画像を 4096px に引き伸ばしてメモリを使わない)
         val req = remember(url, maxSide) {
-            coil3.request.ImageRequest.Builder(ctx).data(url).size(maxSide).precision(coil3.size.Precision.INEXACT).build()
+            coil3.request.ImageRequest.Builder(ctx).data(url).size(maxSide).precision(coil3.size.Precision.INEXACT)
+                // 一覧の小さい画像と、キャッシュを分ける (一覧が、ここで読んだ大きい画像を使い回してメモリを握り続けないように)
+                .memoryCacheKey("$url#full").build()
         }
         Box(
             Modifier.fillMaxSize().exposeTestTags().testTag(TestTags.IMAGE_VIEWER).background(Color.Black)
-                .onSizeChanged { box = it }
+                .onSizeChanged { box = it; offset = clamp(offset, scale) }
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { onDismiss() },
@@ -498,7 +500,11 @@ fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () 
         ) {
             AsyncImage(
                 model = req, contentDescription = f.actualFileName, contentScale = ContentScale.Fit,
-                onSuccess = { st -> intrinsic = st.painter.intrinsicSize },
+                onSuccess = { st ->
+                    intrinsic = st.painter.intrinsicSize
+                    // 読み込む前に拡大していたら、画像の大きさが分かったところで動かせる幅に収め直す
+                    offset = clamp(offset, scale)
+                },
                 modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
             )
             Row(
