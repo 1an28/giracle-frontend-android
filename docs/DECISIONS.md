@@ -724,9 +724,15 @@
     `--environment-variables` は `am instrument -e` として渡る。
   - 検索の要約: Spark で実機 1 日 5 回・仮想の端末 10 回。Spark は支払い情報なしで使える (2016 年の公式ブログ)。
     Cloud Storage for Firebase は 2026-02 から Blaze が必要 (Test Lab の無料のバケットに当てはまるかは分からない。上の gcloud の説明とは食い違わない)。
-    Test Lab は 2027-09-30 に終わり、Google Cloud の Developer Device Platform に移る。後継は支払いの設定が要る (どちらも第三者の要約で、公式では未確認)。
+    Test Lab は 2027-09-30 に終わり、Google Cloud の Developer Device Platform に移る (下の「終了の予定」)。
   - Macrobenchmark を Test Lab で動かす例: android/performance-samples の `.github/workflows/firebase_test_lab.yml`
     (`--directories-to-pull /sdcard/Download`、`additionalTestOutputDir=/sdcard/Download`、`no-isolated-storage=true`)。原文を読んだ。
+- **終了の予定** (2026-11-13、持ち主の相談セッションが検索で調べた。検索結果の要約で読み、firebase.google.com の原文は開けていない):
+  - Firebase の 2026-09-30 のリリースノートと「Firebase Test Lab Deprecation FAQ」(https://firebase.google.com/docs/test-lab/migrate-faq):
+    Test Lab は非推奨で、2027-09-30 に完全に終わる (コンソールも API も)。後継は Google Cloud の Developer Device Platform
+  - Developer Device Platform は 2027-04-30 まで Test Lab と同じ料金で、その後は従量課金と月額の新しい料金になる。無料の枠が残るかは書かれていない
+  - 第三者 (patrol の Issue #3321、Marathon Labs のブログ) も同じ日付を挙げている
+  - 持ち主との相談の結論: 測れるのはログイン前の起動時間だけで、使えても 2027-09 まで。Firebase の準備は急がず、するかどうかは持ち主がいつ決めてもよい
 - **確かめていないこと**: 実際に Test Lab で動くか (Secrets が無いので一度も動かしていない)。特に、self-instrumenting の計測用 APK を Test Lab が受け付けるか、
   サービスアカウントで無料のバケットから結果を取り出せるか、自動で選ぶ端末が使えるか (試験版・廃止予定の版を tags で除いているが、tags の形は推測)。
   Spark の枠の数が今も同じか。Test Lab の終わりの日付。
