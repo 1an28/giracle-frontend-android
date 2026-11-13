@@ -285,8 +285,11 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     }
     val onSent: (String) -> Unit = { id ->
         sentId = id
-        // 古い側を読んでいて最新側を読み込んでいないと、送ったものは一覧に載らない (addMessage が足さない)。最新を読み込み直す
-        if (!store.history(channelId).value.atEnd) scope.launch {
+        // 最新側を読み込んでいないときと、キャッシュを出しているとき (取り直しに失敗した後。D-047) は、
+        // 送ったものは一覧に載らない (addMessage が足さない)。最新を読み込み直す。
+        // 読み込み直さないと、後の再同期で載ったときに、そのとき読んでいる位置から急に動いてしまう (レビューの指摘)
+        val h = store.history(channelId).value
+        if (!h.atEnd || h.fromCache) scope.launch {
             try {
                 store.jumpToLatest(channelId)
             } catch (e: kotlinx.coroutines.CancellationException) {
