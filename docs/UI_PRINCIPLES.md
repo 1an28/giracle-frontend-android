@@ -242,6 +242,7 @@ Hoober の指摘から、「親指の届く範囲の図」で上下を切るの�
 | 自分宛てを拾う (`inbox`) | ホーム (B にいる間に A でメンションされた) | 通知を押す → そのメンションを押す | A のそのメッセージが見える |
 | 探す (`search_results` / `search`) | ホーム | 検索を押す → 入力欄を押す → (入力) → 検索を押す / → 結果を押す | 結果の行が見える / B のそのメッセージが見える |
 
+同じ作業を、速い回線 (`net=fast`、端末の localhost) と遅い回線 (`net=slow`、LAN のアドレスに `adb emu network delay edge`) で 2 回する。
 起動の時間は Macrobenchmark の `StartupBenchmark` で別に測っている。
 
 ### 基準 (直す前の値)
