@@ -213,7 +213,10 @@ class GiracleApi(private val client: OkHttpClient, @Volatile var endpoint: Endpo
             raw("POST", "message/send", obj("channelId" to channelId, "message" to text, "fileIds" to fileIds, "replyingMessageId" to replyingMessageId))
                 .also { com.giracle.android.data.SendTrace.mark("http_body") }
         }
-        return withContext(Dispatchers.Default) { AppJson.decodeFromString(ApiResponse.serializer(Message.serializer()), res).data }
+        return withContext(Dispatchers.Default) {
+            AppJson.decodeFromString(ApiResponse.serializer(Message.serializer()), res).data
+                .also { com.giracle.android.data.SendTrace.mark("parsed") }
+        }
     }
 
     suspend fun edit(messageId: String, text: String) = callUnit("POST", "message/edit", obj("messageId" to messageId, "message" to text))

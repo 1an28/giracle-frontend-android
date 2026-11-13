@@ -431,7 +431,8 @@ class ReleaseAppTest {
      * 送信を押してから返信が見えるまでの内訳 (#70)。アプリの記録 (SendTrace、タグ GiraclePerf) と e2e の時刻を、
      * 端末共通の uptimeMillis で並べる。値はすべて e2e が送信を押した時刻からの ms。無い区切りは -1。
      * - input: アプリが押されたと受け取るまで (click の注入を含む)。click: UiObject2.click() が戻るまで
-     * - http_body: 送信の HTTP の応答の本文を受け取った (通信の終わり)。http: それを受けてメインスレッドで続きを始めた。ws: WebSocket で自分の送信が届いた。in_list: 画面の一覧に載り、送る動きを始めた
+     * - http_body: 送信の HTTP の応答の本文を IO で読み終えた (通信の終わり)。parsed: 解析が終わった (Default)。
+     *   main: 呼んだ側 (メインスレッド) に戻った。http: 一覧に足した後、画面に送信の終わりを知らせる直前。ws: WebSocket で自分の送信が届いた。in_list: 画面の一覧に載り、送る動きを始めた
      * - scroll: 送る動きの終わり (cancelled は取り消された時刻)。frame: その次の描画。found: e2e が見つけた
      */
     private fun logSendBreakdown(task: UxTask) {
@@ -458,7 +459,7 @@ class ReleaseAppTest {
         } while (!settled && SystemClock.uptimeMillis() < end)
         fun at(p: String) = phases[p]?.let { it - t0 } ?: -1
         Log.i(TAG, "E2E-RESULT ux net=$uxNet task=reply_breakdown input=${at("tap")} click=${task.lastClickMs} " +
-            "http_body=${at("http_body")} http=${at("http_done")} ws=${at("ws_arrived")} in_list=${at("in_list")} scroll=${at("scroll_done")} " +
+            "http_body=${at("http_body")} parsed=${at("parsed")} main=${at("main_resumed")} http=${at("http_done")} ws=${at("ws_arrived")} in_list=${at("in_list")} scroll=${at("scroll_done")} " +
             "cancelled=${at("scroll_cancelled")} frame=${at("frame")} found=${task.foundAt - t0}")
         Log.i(TAG, "E2E-RESULT ux net=$uxNet task=reply_detail in_list=[${detail["in_list"]}] " +
             "scroll=[${detail["scroll_done"] ?: detail["scroll_cancelled"]}] frame=[${detail["frame"]}]")
