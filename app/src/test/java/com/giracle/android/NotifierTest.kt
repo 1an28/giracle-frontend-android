@@ -54,4 +54,19 @@ class NotifierTest {
         Notifier.cancelRead(app, mapOf("ch1" to "2026-11-13T00:00:05Z"))
         assertEquals(0, shadowOf(nm).allNotifications.size)
     }
+
+    /** 通知から返信した会話は、返信で既読時刻が進んでも消さない (#38 と #49 の組み合わせ) */
+    @Test fun replyKeepsNotification() = runBlocking {
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val nm = app.getSystemService(NotificationManager::class.java)
+        Notifier.cancelChannel(app, "ch1")
+        Notifier.post(app, notice("k1", "2026-11-13T00:00:07Z"))
+        Notifier.keepAfterReply("ch1")
+        Notifier.cancelRead(app, mapOf("ch1" to "2026-11-13T00:00:08Z"))
+        assertEquals(1, shadowOf(nm).allNotifications.size)
+        // 次に新しい通知が来たら、また既読で消える
+        Notifier.post(app, notice("k2", "2026-11-13T00:00:09Z"))
+        Notifier.cancelRead(app, mapOf("ch1" to "2026-11-13T00:00:09Z"))
+        assertEquals(0, shadowOf(nm).allNotifications.size)
+    }
 }

@@ -86,7 +86,6 @@ fun HomeScreen(loading: Boolean) {
     val wsState by graph.ws.state.collectAsStateWithLifecycle()
     var reorder by rememberSaveable { mutableStateOf(false) }
     var confirmReadAll by remember { mutableStateOf(false) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     if (confirmReadAll) {
         androidx.compose.material3.AlertDialog(
@@ -97,9 +96,11 @@ fun HomeScreen(loading: Boolean) {
                 androidx.compose.material3.TextButton(
                     onClick = {
                         confirmReadAll = false
-                        scope.launch {
+                        // 途中でホームから離れても (チャンネルを開くなど) 続ける
+                        val appCtx = ctx.applicationContext
+                        graph.scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
                             val failed = store.markAllRead()
-                            if (failed > 0) ctx.toast("$failed 個のチャンネルを既読にできませんでした")
+                            if (failed > 0) appCtx.toast("$failed 個のチャンネルを既読にできませんでした")
                         }
                     },
                     modifier = Modifier.testTag(TestTags.HOME_READ_ALL_CONFIRM),

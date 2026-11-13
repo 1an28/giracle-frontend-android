@@ -496,7 +496,9 @@ class ChatStore(
                             readTimes.update { it + (ch to latest.createdAt) }
                         }
                     }
-                    hasNew.update { it - ch }
+                    // 既読にしている間に新着が届いていたら、その未読表示は残す
+                    val arrived = lastArrival[ch]
+                    if (latest == null || arrived == null || !isAfter(arrived, latest.createdAt)) hasNew.update { it - ch }
                     true
                 } catch (e: CancellationException) {
                     throw e
@@ -507,6 +509,9 @@ class ChatStore(
             }
         }.awaitAll().count { !it }
     }
+
+    /** チャンネルごとの、最後に届いた他の人のメッセージの時刻 (「すべて既読」の最中に届いた新着を見分ける) */
+    private val lastArrival = ConcurrentHashMap<String, String>()
 
     private fun pushReadTime(channelId: String, time: String) {
         readTimeJobs[channelId]?.cancel()
@@ -694,6 +699,7 @@ class ChatStore(
             pushReadTime(m.channelId, m.createdAt)
             return
         }
+        lastArrival[m.channelId] = m.createdAt
         if (!viewing) {
             hasNew.update { it + (m.channelId to true) }
             val cfg = notificationConfig.value

@@ -235,6 +235,14 @@ object Notifier {
         done.forEach { cancelChannel(context, it) }
     }
 
+    /**
+     * 通知から返信したチャンネルの通知を、既読による消去 (#49) の対象から外す。返信すると既読時刻が進むが、
+     * 返信した会話の通知は残す決まり (#38) のため。次に新しい通知が来たら、また対象になる
+     */
+    fun keepAfterReply(channelId: String) {
+        synchronized(conversations) { lastNotices[channelId]?.let { lastNotices[channelId] = it.copy(createdAt = null) } }
+    }
+
     /** 通知が払って消されたとき。通知はもう無いので、覚えている会話だけ忘れる */
     fun forgetChannel(channelId: String) {
         synchronized(conversations) {

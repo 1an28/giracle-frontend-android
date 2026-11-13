@@ -30,6 +30,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
             try {
                 val store = graph.store
                 if (intent.action == ACTION_REPLY && !reply.isNullOrEmpty()) {
+                    // 返信した会話の通知は残す (#38)。この後に既読時刻が進んでも、既読による消去 (#49) の対象にしない
+                    Notifier.keepAfterReply(channelId)
                     try {
                         store.send(channelId, reply, emptyList(), messageId)
                     } catch (e: Exception) {

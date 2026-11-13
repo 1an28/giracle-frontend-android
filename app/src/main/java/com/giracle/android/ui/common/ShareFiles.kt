@@ -14,18 +14,23 @@ import java.io.File
 
 /**
  * 添付を他のアプリへ共有する (#50)。ファイルの取得には認証の Cookie が要るので、URL のままでは渡せない。
- * いったんキャッシュの `shared/` に取ってきて、FileProvider の content:// を渡す。前に共有した分は、次の共有のときに消す。
+ * いったんキャッシュの `shared/` に取ってきて、FileProvider の content:// を渡す。共有したファイルは 1 時間ほど残し、その後の共有のときに消す。
  */
 object ShareFiles {
     private const val DIR = "shared"
+    private val seq = java.util.concurrent.atomic.AtomicInteger()
 
     fun authority(ctx: Context) = ctx.packageName + ".files"
 
     suspend fun share(ctx: Context, graph: AppGraph, files: List<FileAttached>) {
         if (files.isEmpty()) return
-        val dir = File(ctx.cacheDir, DIR)
+        val root = File(ctx.cacheDir, DIR)
+        // 共有ごとに別のフォルダに置く。続けて共有しても、前の共有先がまだ読んでいるファイルを消さない。
+        // 古いフォルダ (1 時間より前) は、次に共有するときに消す
+        val dir = File(root, "${System.currentTimeMillis()}-${seq.incrementAndGet()}")
         val local = withContext(Dispatchers.IO) {
-            dir.deleteRecursively()
+            val old = System.currentTimeMillis() - 60 * 60 * 1000L
+            root.listFiles()?.filter { it.lastModified() < old }?.forEach { it.deleteRecursively() }
             dir.mkdirs()
             files.mapIndexed { i, f ->
                 val res = graph.http.newCall(Request.Builder().url(graph.api.fileUrl(f.id)).build()).await()
