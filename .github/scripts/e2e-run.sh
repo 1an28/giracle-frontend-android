@@ -67,6 +67,14 @@ show_clues() {
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
 # 条件付きの確認 (assume) は、飛ばされても「OK」になる。指定したのに動いていなければ失敗にする
 echo "::group::e2e の結果の印"; grep -o "E2E-RESULT .*" "$OUT/logcat.txt"; echo "::endgroup::"
+# よく使う作業の手数と時間 (D-046)。エミュレータの時間は絶対値ではなく、前の実行 (docs/UI_PRINCIPLES.md 9 章の基準) との比較に使う
+echo "::group::よく使う作業の手数と時間 (ux)"
+grep -oE "E2E-RESULT ux task=.*" "$OUT/logcat.txt" | sed 's/E2E-RESULT ux //'
+echo "::endgroup::"
+if [ $status = 0 ] && ! grep -q "E2E-RESULT ux_test=done" "$OUT/logcat.txt"; then
+  echo "::error::よく使う作業の測定 (uxTasks) が最後まで動いていない"
+  status=1
+fi
 if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT lan_test=done" "$OUT/logcat.txt"; then
   echo "::error::LAN のサーバーでの確認 (lanServerPermissionAndOfflineSend) が最後まで動いていない (飛ばされた?)"
   status=1

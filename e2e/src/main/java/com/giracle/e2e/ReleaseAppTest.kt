@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
@@ -72,29 +73,8 @@ class ReleaseAppTest {
     }
 
     @Test fun releaseBuildWorksEndToEnd() {
-        // 1. 起動 (まっさらな状態から)。R8 で必要なものが消えていれば、ここかログインで落ちる
-        shell("pm clear $pkg")
-        launch()
-        val url = wait(res("login.server_url"), 30_000, "ログイン画面")
-        shot("launch")
-
-        // 2. サーバーを指定してログイン
-        url.text = server
-        wait(res("login.connect"), 5_000, "接続ボタン").click()
-        wait(res("login.username"), 20_000, "サーバー情報の取得 (login.username)").text = adminUser
-        wait(res("login.password"), 5_000, "パスワード欄").text = adminPass
-        hideKeyboard() // ボタンを隠さないように
-        wait(res("login.submit"), 5_000, "ログインボタン").click()
-
-        // 3. 通知の権限の確認 (Android 13 以上)。許可しても落ちないこと
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            if (device.wait(Until.findObject(ALLOW_BUTTON), 20_000) == null) fail("通知の権限の確認画面が出ない")
-            shot("permission")
-            if (!clickAllowSettled()) fail("通知の権限の確認画面を閉じられない")
-        }
-        wait(res("screen.home"), 20_000, "ホーム画面")
-        assertAlive("通知の権限を許可した後")
-        shot("home")
+        // 1〜3. まっさらな状態から起動し、ログインして通知の権限を許可する
+        freshLogin()
 
         // 4. チャンネルを開く
         findScrolling(res("home.channel:$channelId"), "確認用チャンネル").click()
@@ -253,6 +233,198 @@ class ReleaseAppTest {
             fail("プッシュ通知が届かない (プロセスを終わらせた: $killed、今のプロセス: ${shell("pidof $pkg").trim()})")
         }
         device.pressBack()
+    }
+
+    /**
+     * 1. 起動 (まっさらな状態から)。R8 で必要なものが消えていれば、ここかログインで落ちる
+     * 2. サーバーを指定してログイン
+     * 3. 通知の権限の確認 (Android 13 以上)。許可しても落ちないこと
+     */
+    private fun freshLogin() {
+        shell("pm clear $pkg")
+        launch()
+        val url = wait(res("login.server_url"), 30_000, "ログイン画面")
+        shot("launch")
+        url.text = server
+        wait(res("login.connect"), 5_000, "接続ボタン").click()
+        wait(res("login.username"), 20_000, "サーバー情報の取得 (login.username)").text = adminUser
+        wait(res("login.password"), 5_000, "パスワード欄").text = adminPass
+        hideKeyboard() // ボタンを隠さないように
+        wait(res("login.submit"), 5_000, "ログインボタン").click()
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (device.wait(Until.findObject(ALLOW_BUTTON), 20_000) == null) fail("通知の権限の確認画面が出ない")
+            shot("permission")
+            if (!clickAllowSettled()) fail("通知の権限の確認画面を閉じられない")
+        }
+        wait(res("screen.home"), 20_000, "ホーム画面")
+        assertAlive("通知の権限を許可した後")
+        shot("home")
+    }
+
+    /**
+     * よく使う作業 (docs/UI_PRINCIPLES.md の 1 章と 9 章、D-046) の手数と時間を測り、ログに出す。
+     * 手数は利用者がする操作 (押す・長押し・すべらせる・戻る) の回数。文字の入力は数えない。
+     * 時間は、最後の操作から、終わりの状態の要素が画面に出るまで (エミュレータなので、前の実行との比較だけに使う)。
+     * 結果は「E2E-RESULT ux task=... taps=... ms=...」の行。e2e-run.sh が CI のログにまとめて出す。
+     */
+    @Test fun uxTasks() {
+        // 準備: A は既読 25 件の後に未読 20 件、B は 10 件 (1 件目に検索の語)
+        val chB = admin.createChannel("e2eB$suffix", "配布版の確認用 (自動で消す)")
+        try {
+            runCatching { admin.joinChannel(chB) }
+            bob.joinChannel(chB)
+            repeat(25) { bob.send(channelId, "既読%02d-$suffix".format(it + 1)) }
+            admin.updateReadTime(channelId, admin.recent(channelId).first().createdAt)
+            SystemClock.sleep(50) // 既読の最後と未読の始まりの時刻が同じにならないように
+            repeat(20) { bob.send(channelId, "未読%02d-$suffix".format(it + 1)) }
+            val findWord = "uxfind$suffix"
+            bob.send(chB, "B01-$suffix $findWord")
+            for (i in 2..10) bob.send(chB, "B%02d-$suffix".format(i))
+            val firstUnread = admin.recent(channelId).first { it.content == "未読01-$suffix" }.id
+            val bFirst = admin.recent(chB).first { it.content.startsWith("B01-$suffix") }.id
+
+            freshLogin()
+
+            // 読む: ホームの未読のチャンネルを開き、未読の始まりが見える
+            UxTask("read_unread").run {
+                tap(findScrolling(res("home.channel:$channelId"), "チャンネル A"))
+                done(By.textContains("未読01-$suffix"))
+            }
+            shot("ux_read_unread")
+
+            // 返す: 未読の始まりのメッセージを右へすべらせて返信する。終わりは、送った返信が画面に見えること
+            val reply = "返信-$suffix"
+            UxTask("reply").run {
+                swipeRight(wait(res("channel.message:$firstUnread"), 5_000, "未読の始まりのメッセージ"))
+                wait(res("composer.reply"), 5_000, "返信先の表示")
+                tap(wait(res("composer.input"), 5_000, "入力欄"))
+                wait(res("composer.input"), 5_000, "入力欄").text = reply
+                tap(wait(res("composer.send"), 5_000, "送信ボタン"))
+                // 読んでいる途中で返すと、送った返信が画面の外 (一番下) に出て見えないことがある。それも記録する
+                done(By.textContains(reply), timeoutMs = 8_000, required = false)
+            }
+            waitFor("サーバーに返信が届く") { admin.recentTexts(channelId).contains(reply) }
+            shot("ux_reply")
+
+            // 切り替える (初めて開く): チャンネル → ホーム → B。B の最新が見える
+            hideKeyboard()
+            UxTask("switch_first").run {
+                back()
+                tap(findScrolling(res("home.channel:$chB"), "チャンネル B"))
+                done(By.textContains("B10-$suffix"))
+            }
+            // 切り替える (一度開いた A に戻る)。A の最新 (自分の返信) が見える
+            UxTask("switch_again").run {
+                back()
+                tap(findScrolling(res("home.channel:$channelId"), "チャンネル A"))
+                done(By.textContains(reply))
+            }
+
+            // 切り替える (つなぎ直した後に、一度開いた B へ)。背面に回すと接続を切る設定 (常時接続 OFF) なので、
+            // 戻るとつなぎ直して読み込み直す (docs/UI_PRINCIPLES.md の C-2)
+            device.pressHome()
+            SystemClock.sleep(5_000)
+            launch()
+            wait(res("screen.channel"), 15_000, "戻ったときのチャンネル画面")
+            val ping = "再接続確認-$suffix"
+            bob.send(channelId, ping)
+            wait(By.textContains(ping), 20_000, "戻った後の受信 (つなぎ直した WebSocket)")
+            SystemClock.sleep(3_000) // つなぎ直しの後の読み込み直しが終わるのを待つ
+            UxTask("switch_after_reconnect").run {
+                back()
+                tap(findScrolling(res("home.channel:$chB"), "チャンネル B"))
+                done(By.textContains("B10-$suffix"))
+            }
+            shot("ux_switch_after_reconnect")
+
+            // 自分宛てを拾う: B にいる間に A でメンションされる。ホーム → 通知 → その行で、メンションが見える
+            val mention = "メンション-$suffix @<${admin.userId}>"
+            bob.send(channelId, mention)
+            val mentionId = admin.recent(channelId).first { it.content == mention }.id
+            device.pressBack()
+            wait(res("screen.home"), 10_000, "ホーム画面")
+            SystemClock.sleep(2_000) // 通知 (受信箱) への反映を待つ
+            UxTask("inbox").run {
+                tap(wait(res("home.inbox"), 5_000, "通知の行"))
+                tap(wait(res("inbox.item:$mentionId"), 15_000, "通知の一覧のメンション"))
+                done(res("channel.message:$mentionId"))
+            }
+            shot("ux_inbox")
+
+            // 探す: ホーム → 検索 → 語を入れて検索 → 結果を開くと、そのメッセージが見える
+            // 通知の一覧から開いたチャンネルは、通知の一覧の上に積まれるので、戻るは 2 回
+            device.pressBack()
+            wait(res("screen.inbox"), 10_000, "通知の一覧に戻る")
+            device.pressBack()
+            wait(res("screen.home"), 10_000, "ホーム画面")
+            UxTask("search").run {
+                tap(wait(res("home.search"), 5_000, "検索ボタン"))
+                tap(wait(res("search.input"), 5_000, "検索の入力欄"))
+                wait(res("search.input"), 5_000, "検索の入力欄").text = findWord
+                tap(wait(res("search.submit"), 5_000, "検索の実行ボタン"))
+                part("search_results", res("search.result:$bFirst"))
+                tap(wait(res("search.result:$bFirst"), 5_000, "検索の結果"))
+                done(res("channel.message:$bFirst"))
+            }
+            shot("ux_search")
+            assertAlive("よく使う作業の測定の後")
+            Log.i(TAG, "E2E-RESULT ux_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
+        } finally {
+            runCatching { admin.deleteChannel(chB) }
+        }
+    }
+
+    /** 1 つの作業の手数と時間を数える ([uxTasks]) */
+    private inner class UxTask(private val name: String) {
+        private var taps = 0
+        private var last = 0L
+
+        private fun mark() { taps++; last = SystemClock.uptimeMillis() }
+        fun tap(o: UiObject2) { mark(); o.click() }
+        fun back() { mark(); device.pressBack() }
+
+        /** 左端の「戻る」の操作と取り合わないよう、要素の 3 割の位置から右へすべらせる */
+        fun swipeRight(o: UiObject2) {
+            val b = o.visibleBounds
+            val y = b.centerY()
+            mark()
+            device.swipe(b.left + b.width() * 3 / 10, y, b.left + b.width() * 8 / 10, y, 20)
+        }
+
+        /** 作業の途中の区切り ([label]) として、要素が出るまでの時間と、ここまでの手数を出す */
+        fun part(label: String, sel: BySelector, timeoutMs: Long = 20_000) = measure(label, sel, timeoutMs, required = true)
+
+        /** 終わりの状態の要素が出るまでの時間を測る。[required] でなければ、出なくても失敗にせず shown=false と記録する */
+        fun done(sel: BySelector, timeoutMs: Long = 20_000, required: Boolean = true) = measure(name, sel, timeoutMs, required)
+
+        // UiDevice.wait は問い合わせの間隔が粗いので、自分で短い間隔で探す。
+        // findObject は既定で、画面が 500ms 落ち着くのを待ってから探す。それを測る時間に含めないよう、測る間だけ待たない
+        private fun measure(label: String, sel: BySelector, timeoutMs: Long, required: Boolean) {
+            val conf = Configurator.getInstance()
+            val idle = conf.getWaitForIdleTimeout()
+            conf.setWaitForIdleTimeout(0)
+            val found = try {
+                val end = last + timeoutMs
+                var hit = false
+                while (!hit && SystemClock.uptimeMillis() < end) {
+                    hit = device.findObject(sel) != null
+                    if (!hit) SystemClock.sleep(30)
+                }
+                hit
+            } finally {
+                conf.setWaitForIdleTimeout(idle)
+            }
+            if (found) {
+                Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
+                return
+            }
+            Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=-1 shown=false")
+            if (required) {
+                shot("ux_$label")
+                assertAlive("「$label」の測定")
+                fail("「$label」の終わりの状態が ${timeoutMs / 1000} 秒以内に出ない")
+            }
+        }
     }
 
     /**

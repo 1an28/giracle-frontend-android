@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +45,7 @@ import com.giracle.android.ui.common.Avatar
 import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.LocalStore
 import com.giracle.android.ui.common.SubScreen
+import com.giracle.android.ui.common.TestTags
 import com.giracle.android.ui.common.friendlyTime
 import com.giracle.android.ui.common.rememberUser
 import com.giracle.android.ui.common.userMessage
@@ -91,7 +93,7 @@ fun SearchScreen(initialChannel: String?, initialUser: String?) {
         LazyColumn(Modifier.fillMaxSize().padding(pad)) {
             item {
                 Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(content, { content = it }, placeholder = { Text("キーワード") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    OutlinedTextField(content, { content = it }, placeholder = { Text("キーワード") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag(TestTags.SEARCH_INPUT),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { run(true) }))
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Column {
@@ -109,7 +111,7 @@ fun SearchScreen(initialChannel: String?, initialUser: String?) {
                         FilterChip(selected = hasFile, onClick = { hasFile = !hasFile }, label = { Text("添付あり") })
                         FilterChip(selected = asc, onClick = { asc = !asc }, label = { Text(if (asc) "古い順" else "新しい順") })
                     }
-                    Button(onClick = { run(true) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("検索") }
+                    Button(onClick = { run(true) }, enabled = !busy, modifier = Modifier.fillMaxWidth().testTag(TestTags.SEARCH_SUBMIT)) { Text("検索") }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             }
@@ -130,7 +132,7 @@ fun SearchScreen(initialChannel: String?, initialUser: String?) {
 private fun ResultRow(m: Message, channelName: String?, onClick: () -> Unit) {
     val store = LocalStore.current
     val u = rememberUser(m.userId)
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().testTag(TestTags.searchResult(m.id)).clickable(onClick = onClick).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
         Avatar(m.userId, 32.dp)
         Column(Modifier.weight(1f)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

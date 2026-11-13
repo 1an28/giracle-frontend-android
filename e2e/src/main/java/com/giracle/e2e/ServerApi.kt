@@ -63,7 +63,12 @@ class ServerApi(private val server: String) {
     /** 新しい順の本文 */
     fun recentTexts(channelId: String): List<String> = recent(channelId).map { it.content }
 
-    data class Msg(val id: String, val content: String, val files: List<Pair<String, String>>, val reactions: Map<String, Int>)
+    data class Msg(val id: String, val content: String, val files: List<Pair<String, String>>, val reactions: Map<String, Int>, val createdAt: String = "")
+
+    /** 既読の位置を決める (未読がある状態を作るため) */
+    fun updateReadTime(channelId: String, readTime: String) {
+        call("POST", "message/read-time/update", JSONObject().put("channelId", channelId).put("readTime", readTime))
+    }
 
     /** 新しい順のメッセージ (添付は (ファイル ID, 種類)、リアクションは 絵文字コード → 数) */
     fun recent(channelId: String): List<Msg> {
@@ -78,6 +83,7 @@ class ServerApi(private val server: String) {
                 content = m.optString("content"),
                 files = (0 until files.length()).map { files.getJSONObject(it).let { f -> f.getString("id") to f.optString("type") } },
                 reactions = (0 until reactions.length()).associate { reactions.getJSONObject(it).let { x -> x.getString("emojiCode") to x.optInt("count") } },
+                createdAt = m.optString("createdAt"),
             )
         }
     }
