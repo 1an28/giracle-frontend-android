@@ -477,9 +477,10 @@
 - **見つけたこと**: `MainActivity` に `configChanges` が無く、回転・折りたたみの開閉で Activity が作り直されていた。
   画面の履歴 (`Navigator`) は `remember` で持っていたため、作り直しで消え、設定画面などを見ていても前回のチャンネルに戻っていた (コードを読んで判断。実機では未確認)。
 - **判断**:
-  - `configChanges` に orientation・screenSize・screenLayout・smallestScreenSize・keyboard・keyboardHidden・navigation・uiMode・density を入れる。
+  - `configChanges` に orientation・screenSize・screenLayout・smallestScreenSize・keyboard・keyboardHidden・navigation・density を入れる。
     Compose だけで描いているので、作り直さなくても描き直しで足りる。履歴・スクロール位置・入力中の状態・キーボードの表示が保たれる
-    (Android 17 では作り直したときにキーボードの表示が戻らなくなったので、その対策にもなる)。言語の変更は対象にしない (作り直しで文字を入れ替える)。
+    (Android 17 では作り直したときにキーボードの表示が戻らなくなったので、その対策にもなる)。言語の変更と、ダーク/ライトの切り替え (uiMode) は対象にしない
+    (`enableEdgeToEdge` がステータスバーの文字色を起動時にしか決めないため、作り直して合わせる。履歴は保存しているので戻る)。
   - 1 ペインと 2 ペインでチャンネルの画面を描く場所が変わっても、状態ごと移すよう `movableContentOf` で包む (#39 の案 A)。
   - 画面の履歴は `rememberSaveable` で保存し (`NavigatorCodec`)、プロセスが終わって戻ったときにも戻す。戻したときは前回のチャンネルを開き直さない。
 - **確かめたこと**: `UiScreenshotTest.twoPaneKeepsScrollPosition` で、幅を 1024dp → 400dp → 1024dp と変えても、スクロールした位置
@@ -494,3 +495,11 @@
   メッセージは残る・元に戻せない」を伝える。断られたとき (自分以上のロールなど) はサーバーの理由をそのまま出す。
 - **確かめたこと**: `LiveServerTest.adminDeletesUser` で、削除済みになること・その人のセッションとログインが使えなくなること・自分は消せないこと。
 - **確かめていないこと**: 画面の操作 (ボタンと確認ダイアログ) は自動テストで押していない。
+
+## D-034 回線が戻ったら、再接続の待ち時間を待たずにつなぎ直す
+
+- **見つけたこと**: `WsClient.nudge()` (すぐつなぎ直す) はどこからも呼ばれていなかった。切断の後は最大 30 秒の待ち時間 (指数バックオフ) を
+  待ってからつなぎ直すため、機内モードを解除しても、送信待ち (D-029) が送られるまで最大 30 秒かかっていた。
+- **判断**: `ConnectivityManager.registerDefaultNetworkCallback` で回線がつながったことを受け、`nudge()` を呼ぶ
+  (`ACCESS_NETWORK_STATE` を宣言。利用者に尋ねない権限)。切断中でなければ何もしない。
+- **確かめていないこと**: どれだけ早くなったか (e2e の送信待ちの確認で、電波を戻してから届くまでの時間をログに出すと分かる)。
