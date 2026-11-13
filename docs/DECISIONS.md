@@ -662,3 +662,39 @@
   ATF が Robolectric で Compose の中身を見ないこと (試験用のテストで確かめ、結果だけ残してテストは消した)。
 - **確かめていないこと**: 原則に沿って作り直した画面が実際に速く・使いやすくなるか。エミュレータで ATF が働くか。
   レビューの分類の正しさ (1 人で分類し、標本は 160 件)。要約で読んだ出典の原文。
+
+## D-046 Firebase Test Lab の実機で、配布版の起動時間を測る (無料の枠だけで)
+
+- **目的**: 開発環境に実機が無く、実機での速さの絶対値は「測れないもの」として進めていた (D-045)。
+  Macrobenchmark はエミュレータでは既定で失敗にする (公式。エミュレータの値は利用者の体験を表さないため)。
+  持ち主の条件は「役に立つならやってよい。有料はちょっと微妙」(2026-11-13)。
+- **判断**:
+  - Spark (無料) のプロジェクトで、Test Lab の実機を使う。**Blaze には上げない**。支払い方法が無ければ、枠を超えても止まるだけで請求されない。
+  - 走らせるのは手動と 1 日 1 回 (`device-benchmark.yml`)。push では走らせない (実機は 1 日 5 回の枠)。1 回の実行で 1 台・1 回分だけ使う。
+  - 結果は Test Lab が用意する無料のバケット (`test-lab-...`) に置かせ、`--results-bucket` は使わない
+    (自分のバケットは支払いの設定が要り、保存に費用がかかる。gcloud の説明に書いてある)。
+    そこから `benchmarkData.json` を取り出し、ログと実行の要約に出す (成果物の zip はこの開発環境から取れないため)。
+  - 認証はサービスアカウントの鍵 (Secrets の `FIREBASE_SA_KEY`)。Workload Identity Federation は鍵を置かずに済むが、
+    持ち主の準備の手数が多い (プールとプロバイダを作り、リポジトリと結び付ける) ので、今は使わない。
+    ロールは「編集者」。gcloud の説明に、無料のバケットを使うには実行する主体に roles/editor が要るとある。
+    鍵が漏れたときの被害は、このプロジェクトの中に限られ、支払い方法が無いので請求も起きない (推測を含む)。
+  - Secrets が無いときは、測る job を飛ばして成功で終わる。
+  - **測るのは、ログイン前の画面までのコールドスタートだけ** (Baseline Profile あり・なしの 2 つ)。
+    Test Lab の端末は、ランナー上のサーバー (localhost) に届かない。ランナーのサーバーを一時的に公開する方法
+    (Cloudflare の quick tunnel) を作りかけたが、開発環境の自動の許可の判定で止められた。外へ公開するかどうかは持ち主が決めることなので、
+    選択肢を ROADMAP に置いた。ログイン後の起動とスクロールは、その答えが出てから Test Lab に足す。
+  - スクロールのフレーム時間 (`ScrollBenchmark`、`FrameTimingMetric`) は、今はエミュレータ (`baseline-profile.yml` の最後) で測り、
+    前の実行との比較に使う (UI_PRINCIPLES.md 8 章の案)。
+  - `StartupBenchmark` は、データの無い端末でもログインしてから測るようにした (引数 `login=false` のときはしない)。
+- **調べたこと** (firebase.google.com・docs.cloud.google.com は開発環境から開けず、公式ページの原文は読めていない):
+  - gcloud 570.0.0 の `gcloud firebase test android run --help` (Google の CLI に入っている公式の説明): 実機の上限は 45 分、
+    既定のバケットは無料で、使うには roles/editor が要る。`--results-bucket` のバケットは支払いの設定が要り、保存に費用がかかる。
+    `--environment-variables` は `am instrument -e` として渡る。
+  - 検索の要約: Spark で実機 1 日 5 回・仮想の端末 10 回。Spark は支払い情報なしで使える (2016 年の公式ブログ)。
+    Cloud Storage for Firebase は 2026-02 から Blaze が必要 (Test Lab の無料のバケットに当てはまるかは分からない。上の gcloud の説明とは食い違わない)。
+    Test Lab は 2027-09-30 に終わり、Google Cloud の Developer Device Platform に移る。後継は支払いの設定が要る (どちらも第三者の要約で、公式では未確認)。
+  - Macrobenchmark を Test Lab で動かす例: android/performance-samples の `.github/workflows/firebase_test_lab.yml`
+    (`--directories-to-pull /sdcard/Download`、`additionalTestOutputDir=/sdcard/Download`、`no-isolated-storage=true`)。原文を読んだ。
+- **確かめていないこと**: 実際に Test Lab で動くか (Secrets が無いので一度も動かしていない)。特に、self-instrumenting の計測用 APK を Test Lab が受け付けるか、
+  サービスアカウントで無料のバケットから結果を取り出せるか、自動で選ぶ端末が使えるか、`locale=ja` が使えるか。
+  Spark の枠の数が今も同じか。Test Lab の終わりの日付。

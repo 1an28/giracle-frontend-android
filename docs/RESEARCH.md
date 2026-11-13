@@ -11,3 +11,13 @@
 - 確かめたこと: Web 版 (giracle-frontend-solid) の未着手の Issue は、チャンネルのフォルダ分け #237・通話 #224・
   レート制限の管理画面 #204・サーバー名をタブ名に #202・入力のプレビュー #138・オンライン一覧の取得の改善 #239。backend は 0 件
 - 推測: フォルダ分けと通話はサーバー側の変更を伴う。Web 版に入ったら、アプリも合わせる
+
+### Firebase Test Lab を無料のまま使えるか (D-046)
+- 入り口: 「実機での速さは測れない」(D-045) を当たり前にしていた。持ち主との相談で、無料の実機の枠があると分かった
+- 確かめたこと (gcloud 570.0.0 の `gcloud firebase test android run --help`): 実機の上限 45 分。結果の既定のバケットは無料で、
+  使う主体に roles/editor が要る。自分のバケット (`--results-bucket`) は支払いの設定が要る。
+  android/performance-samples の Test Lab のワークフロー (原文): Macrobenchmark の結果を `/sdcard/Download` に出して取り出している
+- 要約で読んだこと (firebase.google.com・docs.cloud.google.com は開けなかった): Spark は実機 1 日 5 回・仮想 10 回で、支払い情報なしで使える。
+  Cloud Storage for Firebase は 2026-02 から Blaze が必要。Test Lab は 2027-09-30 に終わり、後継 (Developer Device Platform) は支払いの設定が要る
+- 推測: 支払い方法を登録しない限り、請求は起きない。Test Lab の終わりが本当なら、実機で測れるのは 2027-09 まで
+- 気づいたこと: Test Lab の端末は CI のランナーのサーバーに届かない。これまでの計測 (エミュレータ) は「同じ機械の中にサーバーがある」前提に頼っていた
