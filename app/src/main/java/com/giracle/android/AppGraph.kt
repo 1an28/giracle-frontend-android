@@ -36,7 +36,14 @@ sealed interface AppPhase {
 class AppGraph(context: Context) {
     val appContext: Context = context.applicationContext
     val prefs = Prefs(appContext)
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * アプリ全体の裏の処理。想定していない例外が 1 つの処理から漏れても、アプリごと落とさずに記録だけする
+     * (Android では、処理器の無い launch の例外はアプリを落とす)。e2e は logcat の [UNCAUGHT_TAG] も拾う
+     */
+    val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default +
+            kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.e(UNCAUGHT_TAG, "uncaught in app scope", e) },
+    )
 
     val http: OkHttpClient = buildOkHttp(prefs, File(appContext.cacheDir, "http"))
 
@@ -222,5 +229,6 @@ class AppGraph(context: Context) {
 
     companion object {
         const val DEFAULT_SERVER = "http://localhost"
+        const val UNCAUGHT_TAG = "GiracleUncaught"
     }
 }

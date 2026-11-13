@@ -145,7 +145,14 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
 
     // ---- 指定メッセージへ移動 ----
     suspend fun jump(messageId: String) {
-        val ok = store.jumpToMessage(channelId, messageId)
+        // 圏外などで取れないときは、落ちずに理由を出す (以前は通知から開いたときに圏外だとアプリが落ちていた)
+        val ok = try {
+            store.jumpToMessage(channelId, messageId)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ctx.toast(e.userMessage()); return
+        }
         if (!ok) { ctx.toast("対象のメッセージを取得できませんでした。削除された可能性があります。"); return }
         val idx = store.history(channelId).value.messages.indexOfFirst { it.id == messageId }
         if (idx >= 0) {
