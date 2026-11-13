@@ -74,7 +74,8 @@ case "$MODE" in
     if ! run ScrollBenchmark "$NAME"; then echo "::warning::スクロールの計測 ($NAME) が失敗した"; exit 0; fi
     # フレーム時間 (frameDurationCpuMs・frameOverrunMs の P50〜P99) を見出し付きで出す。エミュレータなので比べるだけに使う
     echo "::group::スクロールのフレーム時間 ($NAME)"
-    grep -E "ScrollBenchmark|frameDurationCpuMs|frameOverrunMs|frameCount" "$OUT/$NAME.txt"
+    # 計測の出力は同じ要約を何度も出すので、重複を除く
+    grep -E "^ScrollBenchmark_|frameDurationCpuMs|frameOverrunMs|frameCount" "$OUT/$NAME.txt" | awk '!seen[$0]++'
     echo "::endgroup::"
     ;;
 esac
