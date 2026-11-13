@@ -23,9 +23,8 @@ if [ ! -d "$WEB_DIR" ]; then
   git clone --depth 1 https://github.com/NfoAlex/giracle-frontend-solid.git "$WEB_DIR"
   (cd "$WEB_DIR" && npx -y pnpm@10 install)
 fi
-# setsid で呼び出し元から切り離す (呼び出したシェルやその作業のまとまりが終わらされても、サーバーは残す)
-(cd "$BACKEND_DIR" && setsid nohup bun run src/index.ts > "$HOME/backend.log" 2>&1 < /dev/null &)
-(cd "$WEB_DIR" && setsid nohup npx vite --port 3333 --strictPort --host > "$HOME/web.log" 2>&1 < /dev/null &)
+(cd "$BACKEND_DIR" && nohup bun run src/index.ts > "$HOME/backend.log" 2>&1 &)
+(cd "$WEB_DIR" && nohup npx vite --port 3333 --strictPort --host > "$HOME/web.log" 2>&1 &)
 # 起動を待つ (初回の vite は数秒以上かかることがある)
 for _ in $(seq 60); do
   if curl -sf localhost:3333/api/server/config > /dev/null; then echo "stack up: $ORIGIN"; exit 0; fi
