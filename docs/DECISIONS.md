@@ -274,6 +274,12 @@
   - このライブラリは Google の公開 API ではなく、Play 開発者サービスの内部のやり取りを使っている。Google 側の変更で
     動かなくなる可能性がある。その場合の代わりは、配信アプリ・常時接続・Firebase を使う方法 (S-2)。
   - サーバーが VAPID 鍵を作り直すと、登録をやり直す必要がある (アプリの設定の「再登録」)。
+- **追記 (2026-11-13、持ち主がサーバーの作者と話した内容)**: サーバーの作者の方針は「Apple 向けは APNs、Web と Android は Web Push」。
+  この判断 (Android は `platform: "web"` の Web Push で受ける) とそのまま合うので、アプリは何も変えない。
+  - backend (`87be860`) は `platform` に `"android"` / `"ios"` も受け付けるが、送信は `"web"` だけ。
+    iOS 対応で `"ios"` (APNs) の送信が足されても、`"web"` 宛ての送り方が変わらなければアプリには影響しない (コードを読んだうえでの推測)。
+  - アプリが読むプッシュの中身は `title` / `body` / `tag` / `data.channelId` / `data.messageId`。送信処理を分けるときに
+    この形が変わらないことだけ、サーバーの作者に伝えておく (SERVER_CHANGES S-2)。
 - **代替案**: Firebase Messaging SDK + サーバーに FCM の送信を足す (S-2 の旧案。Firebase プロジェクトとサーバーの変更が要る)、
   配信アプリ (ntfy) だけ、常時接続だけ。
 

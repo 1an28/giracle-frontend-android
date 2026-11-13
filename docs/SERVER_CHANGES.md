@@ -14,7 +14,7 @@ Android ネイティブアプリ (Giracle Native) を作るなかで分かった
 | S-1 | 不具合 | 通知が残っているチャンネルを削除すると 500 になる | 作者が直すと返事 (2026-11-12)。未修正 (`87be860` 時点) | - |
 | S-3 | 相談 | アプリからの WebSocket 接続の正式な入口 | 急がない (今は暫定の方法で動いている) | [#7](https://github.com/1an28/giracle-frontend-kotlin/issues/7) |
 | S-5 | 要望 | ログインのトークンを Cookie 以外でも受け渡せるようにする | 急がない | [#7](https://github.com/1an28/giracle-frontend-kotlin/issues/7) |
-| S-2 | 情報 | プッシュ通知: **サーバーの変更は不要になった** (アプリが FCM 経由の Web Push を受ける) | 本番から FCM へ送れるかだけ確認したい | [#6](https://github.com/1an28/giracle-frontend-kotlin/issues/6) |
+| S-2 | 情報 | プッシュ通知: **サーバーの変更は不要になった** (アプリが FCM 経由の Web Push を受ける)。作者の方針「Apple は APNs、Web と Android は Web Push」と一致 (2026-11-13) | 本番から FCM へ送れるかだけ確認したい | [#6](https://github.com/1an28/giracle-frontend-kotlin/issues/6) |
 | S-6 | 要望 | サーバーのバージョンを返す窓口 | あると助かる | - |
 | S-7 | 相談 | プッシュの中身に送信者の userId とチャンネル名を入れる | あると助かる (無くてもアプリで作れる) | [#26](https://github.com/1an28/giracle-frontend-kotlin/issues/26) |
 | S-8 | 相談 | 送信の重複を防ぐため、送信にクライアントが付ける ID を受け付ける | 急がない | [#30](https://github.com/1an28/giracle-frontend-kotlin/issues/30) |
@@ -142,6 +142,16 @@ Cookie での認証はそのまま残せば、Web 版には影響しない。
 1. VAPID 鍵の設定。**本番 (chat.girak.moe) は設定済み** (2026-11-12 に `GET /api/notification/vapid-public-key` で確認)。
 2. サーバーから `https://fcm.googleapis.com` へ HTTPS で出られること。**本番では未確認**。
    Web 版の利用者が Chrome でプッシュ通知を受け取れていれば、同じ宛先なので出られている。
+
+### 作者の方針との関係 (2026-11-13)
+
+作者の方針は「Apple 向けは APNs、Web と Android は Web Push」と聞いた。アプリはこのとおり Web Push (`platform: "web"`) で受けているので、
+**Android のためにサーバーで足すものは無い**。`platform: "android"` の送信も作らなくてよい。
+
+iOS 対応で `SendPushNotification.ts` に `"ios"` (APNs) の分岐を足すときのお願いは 1 つだけ:
+
+- `"web"` 宛てに送る中身の形を変えないでほしい。アプリは `title` / `body` / `tag` / `data.channelId` / `data.messageId` を読んでいる
+  (項目を足すのは問題ない。S-7 のように送信者を足してもらえると助かる)。
 
 ### 注意
 
