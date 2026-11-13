@@ -44,7 +44,7 @@
 - 入り口: D-029 の弱点は「別の端末から同じ本文を続けて送ったとき」と書かれていた。弱点はそれだけか、を疑った
 - 確かめたこと (コードを読んだ): `Outbox.alreadyDelivered` は送信者・本文・時刻 (最初に送ろうとした時刻 - 2 分以降) だけを比べ、添付と返信先を見ない。
   本文なしで画像を送ると本文は `""` なので、2 分以内に送った別の画像と一致し、送られずに消えうる。
-  backend の `message.service.ts` の Send は、添付のファイルが「自分がこのチャンネルへアップロードした未添付のもの」かを検証するので、
+  backend (`87be860`) の `message.service.ts` の Send (566 行目付近) は、添付のファイルが「自分がこのチャンネルへアップロードした未添付のもの」かを検証するので、
   添付付きはファイルの ID で確実に判定できる
 - 推測: 画像だけの送信は、電波の悪い場所 (外出先で写真を送る) で起きやすい
 
@@ -55,7 +55,7 @@
 
 ### この開発環境は本当に制限なしか
 - 入り口: D-053 で「ネットワークを制限なしにした」とあったのに、firebase.google.com が止められた
-- 確かめたこと: このセッションの環境は「Default」(制限あり)。制限なしは別の環境「giracle-frontend-android」。
+- 確かめたこと (環境の設定を読む道具 `get_environment` で): このセッションの環境は「Default」(制限あり。curl も CONNECT 403)。制限なしは別の環境「giracle-frontend-android」。
   セッションをどの環境で始めたかで、開けるサイトが変わる
 - Test Lab の終了: 検索結果に出た公式ページ (firebase.google.com/docs/test-lab/migrate) の見出しが
   「Firebase Test Lab is deprecated and will be fully shut down on September 30, 2027」。本文は開けていない (#69 で確かめる)
