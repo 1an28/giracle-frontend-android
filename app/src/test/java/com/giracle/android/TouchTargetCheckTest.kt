@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -72,5 +75,24 @@ class TouchTargetCheckTest {
             }
         }
         assertEquals(emptyList<String>(), rule.smallTouchTargets(rule.density))
+    }
+
+    /** TouchHitBehaviorTest と同じ配置で、検査の判定が実際の動きと合うこと */
+    @Test fun agreesWithHitBehavior() {
+        rule.setContent {
+            Column {
+                Box(Modifier.size(400.dp, 100.dp)) {
+                    Box(Modifier.fillMaxSize().clickable { }.testTag("under"))
+                    Box(Modifier.align(Alignment.Center).size(60.dp, 28.dp).clickable { }.testTag("onLayer"))
+                }
+                Box(Modifier.size(400.dp, 300.dp)) {
+                    Box(Modifier.fillMaxSize().clickable { }.testTag("scrim"))
+                    Surface(Modifier.align(Alignment.Center).size(300.dp, 200.dp)) {
+                        Box(Modifier.fillMaxSize()) { Box(Modifier.align(Alignment.Center).size(40.dp).clickable { }.testTag("onSurface")) }
+                    }
+                }
+            }
+        }
+        assertEquals(listOf("onLayer: 60x28dp (under と近い)"), rule.smallTouchTargets(rule.density))
     }
 }
