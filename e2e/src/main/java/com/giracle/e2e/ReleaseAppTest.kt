@@ -300,6 +300,15 @@ class ReleaseAppTest {
             }
             shot("ux_read_unread")
 
+            // 未読の始まりへ戻る (C-5): 上 (古い側) へ読み進めて未読の始まりが隠れた後、ボタンで戻る
+            val list = wait(res("channel.messages"), 5_000, "メッセージの一覧")
+            repeat(3) { list.scroll(Direction.UP, 1.0f) }
+            waitFor("未読の始まりが画面の外に出る", 5_000) { device.findObject(By.textContains("未読01-$suffix")) == null }
+            UxTask("back_to_unread").run {
+                tap(wait(res("channel.jump_unread"), 5_000, "「未読の始まりへ」のボタン"))
+                done(By.textContains("未読01-$suffix"))
+            }
+
             // 返す: 未読の始まりのメッセージを右へすべらせて返信する。終わりは、送った返信が画面に見えること
             val reply = "返信-$suffix"
             UxTask("reply").run {
