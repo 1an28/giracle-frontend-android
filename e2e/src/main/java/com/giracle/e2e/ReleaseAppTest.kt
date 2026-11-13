@@ -290,6 +290,7 @@ class ReleaseAppTest {
             val firstUnread = admin.recent(channelId).first { it.content == "未読01-$suffix" }.id
             val bFirst = admin.recent(chB).first { it.content.startsWith("B01-$suffix") }.id
 
+            logRoundTrip()
             freshLogin(uxServer)
 
             // 読む: ホームの未読のチャンネルを開き、未読の始まりが見える
@@ -380,6 +381,26 @@ class ReleaseAppTest {
         } finally {
             runCatching { admin.deleteChannel(chB) }
         }
+    }
+
+    /**
+     * 端末から [uxServer] への往復時間を 5 回測ってログに出す。遅い回線 (エミュレータの遅延) が
+     * 実際に効いているかを、作業の時間とは別に確かめるため (#57)。新しい接続を毎回張る
+     */
+    private fun logRoundTrip() {
+        if (uxServer != server && android.os.Build.VERSION.SDK_INT >= 37) shell("pm grant ${instr.context.packageName} android.permission.ACCESS_LOCAL_NETWORK")
+        val ms = (1..5).map {
+            val t = SystemClock.uptimeMillis()
+            runCatching {
+                val c = java.net.URL("${uxServer.trimEnd('/')}/api/server/config").openConnection() as java.net.HttpURLConnection
+                c.setRequestProperty("Connection", "close")
+                c.connectTimeout = 10_000
+                c.readTimeout = 10_000
+                c.inputStream.use { it.readBytes() }
+                c.disconnect()
+            }.fold({ SystemClock.uptimeMillis() - t }, { -1L })
+        }
+        Log.i(TAG, "E2E-RESULT ux net=$uxNet task=round_trip ms=${ms.sorted()[2]} all=$ms")
     }
 
     /** 1 つの作業の手数と時間を数える ([uxTasks]) */
