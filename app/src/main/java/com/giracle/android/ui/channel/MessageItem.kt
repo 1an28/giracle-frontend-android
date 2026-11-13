@@ -403,7 +403,7 @@ private fun ImageAttachment(f: FileAttached, size: ImageSize?, cb: MessageCallba
     val ratio = size?.let { (it.width.toFloat() / it.height.toFloat()).coerceIn(0.4f, 3f) }
     val maxPx = with(LocalDensity.current) { 320.dp.roundToPx() }
     val url = graph.api.fileUrl(f.id)
-    val req = remember(url) { ImageRequest.Builder(ctx).data(url).size(maxPx).build() }
+    val req = remember(url) { ImageRequest.Builder(ctx).data(url).size(maxPx).precision(coil3.size.Precision.INEXACT).build() }
     // 読み込みが済んだかを testTag で外から分かるようにする (画像の読み込みは画面の情報に出ないため。D-016、#20)
     var loaded by remember(url) { mutableStateOf(false) }
     AsyncImage(

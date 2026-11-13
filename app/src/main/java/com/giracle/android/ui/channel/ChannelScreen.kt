@@ -7,7 +7,6 @@ import android.os.Environment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.layout.onSizeChanged
@@ -447,17 +446,31 @@ fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () 
         var scale by remember { mutableStateOf(1f) }
         var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         var box by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-        // 拡大した分だけ動かせる (画像の端が画面の端を越えて内側に入らない)
+        // 画像そのものの大きさ (読み込めたら分かる)。画面に収めたとき (Fit) の表示の大きさを求めるのに使う
+        var intrinsic by remember { mutableStateOf<androidx.compose.ui.geometry.Size?>(null) }
+        // 拡大した分だけ動かせる。上限は「表示している画像の大きさ × 倍率 - 画面の大きさ」の半分。
+        // 画面と縦横比が違う画像 (上下・左右に余白が出る) でも、画像の端より外へは動かない
         fun clamp(o: androidx.compose.ui.geometry.Offset, s: Float): androidx.compose.ui.geometry.Offset {
-            val mx = box.width * (s - 1f) / 2f
-            val my = box.height * (s - 1f) / 2f
+            val bw = box.width.toFloat()
+            val bh = box.height.toFloat()
+            val i = intrinsic
+            val (dw, dh) = if (i != null && i.width > 0f && i.height > 0f) {
+                val fit = minOf(bw / i.width, bh / i.height)
+                i.width * fit to i.height * fit
+            } else bw to bh
+            val mx = ((dw * s - bw) / 2f).coerceAtLeast(0f)
+            val my = ((dh * s - bh) / 2f).coerceAtLeast(0f)
             return androidx.compose.ui.geometry.Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
         }
-        val maxSide = with(LocalDensity.current) {
-            val c = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-            (maxOf(c.width, c.height) * 2).coerceIn(1024, 4096)
+        // 画面の大きさは最初から分かる値 (displayMetrics) を使い、開いた直後に読み直さないようにする
+        val maxSide = remember {
+            val dm = ctx.resources.displayMetrics
+            (maxOf(dm.widthPixels, dm.heightPixels) * 2).coerceIn(1024, 4096)
         }
-        val req = remember(url, maxSide) { coil3.request.ImageRequest.Builder(ctx).data(url).size(maxSide).build() }
+        // INEXACT: 元より大きくは読まない (小さい画像を 4096px に引き伸ばしてメモリを使わない)
+        val req = remember(url, maxSide) {
+            coil3.request.ImageRequest.Builder(ctx).data(url).size(maxSide).precision(coil3.size.Precision.INEXACT).build()
+        }
         Box(
             Modifier.fillMaxSize().exposeTestTags().testTag(TestTags.IMAGE_VIEWER).background(Color.Black)
                 .onSizeChanged { box = it }
@@ -485,6 +498,7 @@ fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () 
         ) {
             AsyncImage(
                 model = req, contentDescription = f.actualFileName, contentScale = ContentScale.Fit,
+                onSuccess = { st -> intrinsic = st.painter.intrinsicSize },
                 modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
             )
             Row(
