@@ -381,6 +381,14 @@ class ReleaseAppTest {
                 Log.w(TAG, "システムのダイアログを閉じた: " + device.findObject(By.res("android:id/alertTitle"))?.text)
                 it.click()
             }
+            // 通知の許可の確認は、ログイン後に遅れて出ることがある (待つ時間を過ぎてから出て、画面を覆ったまま失敗した例がある)。
+            // 出ていたら許可して閉じる
+            device.findObject(By.res(Pattern.compile(".*:id/permission_allow_button")))?.let {
+                if (device.findObject(By.textContains("notifications")) != null || device.findObject(By.textContains("通知")) != null) {
+                    Log.w(TAG, "遅れて出た通知の許可の確認を閉じた")
+                    it.click()
+                }
+            }
             val left = end - SystemClock.uptimeMillis()
             if (left <= 0) return null
             device.wait(Until.findObject(sel), minOf(left, 2_000L))?.let { return it }
