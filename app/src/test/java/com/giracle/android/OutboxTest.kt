@@ -24,13 +24,14 @@ import java.time.Instant
 @Config(sdk = [35])
 class OutboxTest {
     private val dir = ApplicationProvider.getApplicationContext<android.content.Context>().filesDir
-    private fun newOutbox(name: String) = Outbox(File(dir, name).also { it.delete() })
+    private fun newOutbox(name: String) = Outbox(File(dir, name).also { it.delete(); File(it.path + ".used").delete() })
 
     private class FakeSender(var fail: Throwable? = null, var recentMessages: List<Message> = emptyList()) : Outbox.Sender {
         val sent = mutableListOf<String>()
-        override suspend fun send(item: OutboxItem) {
+        override suspend fun send(item: OutboxItem): String {
             fail?.let { throw it }
             sent += item.text
+            return "sent-${item.localId}"
         }
         override suspend fun recent(channelId: String) = recentMessages
         override val myUserId = "me"
@@ -126,6 +127,35 @@ class OutboxTest {
         assertEquals(2, ob.flush(s))
         assertEquals(listOf("了解"), s.sent)
         assertTrue(ob.items.value.isEmpty())
+    }
+
+    /**
+     * レビューの指摘: 1 件目を送った直後に電波が切れ、次の送り直しで 1 件目の送信が履歴に入っていても、
+     * 同じ本文の 2 件目をそれに当てない (送り直しをまたいで、作り直しても)
+     */
+    @Test fun sentMessageIsNotMatchedAgainAcrossFlushes() = runBlocking {
+        val f = File(dir, "ob6.json").also { it.delete(); File(it.path + ".used").delete() }
+        val ob = Outbox(f)
+        val now = System.currentTimeMillis()
+        val a = ob.add("c", "了解", emptyList(), null, now = now)
+        ob.add("c", "了解", emptyList(), null, now = now + 1)
+        var calls = 0
+        val first = object : Outbox.Sender {
+            override suspend fun send(item: OutboxItem): String {
+                if (calls++ > 0) throw IOException("offline again")
+                return "m1"
+            }
+            override suspend fun recent(channelId: String) = emptyList<Message>()
+            override val myUserId = "me"
+        }
+        assertEquals(1, ob.flush(first))
+        assertEquals(listOf("了解"), ob.items.value.map { it.text })
+        assertFalse(ob.items.value.any { it.localId == a.localId })
+
+        val m1 = Message(id = "m1", channelId = "c", userId = "me", content = "了解", createdAt = Instant.ofEpochMilli(now + 1000).toString())
+        val s = FakeSender(recentMessages = listOf(m1))
+        assertEquals(1, Outbox(f).flush(s)) // 作り直しても覚えている
+        assertEquals("2 件目は送る", listOf("了解"), s.sent)
     }
 
     @Test fun networkFailureClassification() {

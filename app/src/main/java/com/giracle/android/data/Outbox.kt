@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -43,10 +44,17 @@ class Outbox(private val file: File) {
     private val _items = MutableStateFlow(load())
     val items: StateFlow<List<OutboxItem>> = _items
     private val mutex = Mutex()
+    private val usedFile = File(file.path + ".used")
+    /**
+     * 送信待ちの箱が「届いていた」とみなした・送ったメッセージの ID (新しいものが後)。
+     * 次の送り直しで、同じメッセージをほかの項目に当てないために、送り直しをまたいで (ファイルにも) 残す (#66)
+     */
+    private val used: LinkedHashSet<String> = loadUsed()
 
     /** 送る処理 (差し替えはテスト用) */
     interface Sender {
-        suspend fun send(item: OutboxItem)
+        /** @return 送ったメッセージの ID */
+        suspend fun send(item: OutboxItem): String
         /** そのチャンネルの最近のメッセージ (新しい順でなくてよい) */
         suspend fun recent(channelId: String): List<Message>
         val myUserId: String?
@@ -67,6 +75,8 @@ class Outbox(private val file: File) {
     fun clear() {
         _items.value = emptyList()
         file.delete()
+        used.clear()
+        usedFile.delete()
     }
 
     /**
@@ -77,17 +87,16 @@ class Outbox(private val file: File) {
         var done = 0
         val targets = _items.value.filter { if (only != null) it.localId == only else it.error == null }
         val recentByChannel = HashMap<String, List<Message>>()
-        // 一致に使ったメッセージ。1 件の届いていたメッセージを、送信待ちの複数の項目に当てない (#66)
-        val used = HashSet<String>()
         for (item in targets) {
             try {
                 val recent = recentByChannel.getOrPut(item.channelId) { sender.recent(item.channelId) }
+                // 一致に使ったもの・送ったものは、ほかの項目に当てない (#66)
                 val delivered = findDelivered(item, recent, sender.myUserId, used)
                 if (delivered != null) {
-                    used += delivered.id
                     Log.i(TAG, "already delivered: ${item.localId} as ${delivered.id}")
+                    markUsed(delivered.id)
                 } else {
-                    sender.send(item)
+                    markUsed(sender.send(item))
                 }
                 remove(item.localId)
                 done++
@@ -109,6 +118,22 @@ class Outbox(private val file: File) {
         if (!file.exists()) emptyList() else AppJson.decodeFromString(ListSerializer(OutboxItem.serializer()), file.readText())
     }.getOrDefault(emptyList())
 
+    private fun loadUsed(): LinkedHashSet<String> = runCatching {
+        if (!usedFile.exists()) LinkedHashSet() else LinkedHashSet(AppJson.decodeFromString(ListSerializer(String.serializer()), usedFile.readText()))
+    }.getOrDefault(LinkedHashSet())
+
+    private fun markUsed(messageId: String) {
+        used.remove(messageId)
+        used += messageId
+        // 比べる相手は最近 30 件なので、古いものは捨ててよい
+        while (used.size > MAX_USED) used.remove(used.first())
+        runCatching {
+            val tmp = File(usedFile.path + ".tmp")
+            tmp.writeText(AppJson.encodeToString(ListSerializer(String.serializer()), used.toList()))
+            tmp.renameTo(usedFile)
+        }.onFailure { Log.w(TAG, "save used failed", it) }
+    }
+
     private fun save() {
         runCatching {
             val tmp = File(file.path + ".tmp")
@@ -121,6 +146,7 @@ class Outbox(private val file: File) {
         private const val TAG = "Outbox"
         /** 端末とサーバーの時計のずれを見込む幅 */
         private const val CLOCK_SLACK_MS = 2 * 60 * 1000L
+        private const val MAX_USED = 100
 
         /**
          * 送ったが応答が返らなかった場合に、すでに届いているか。届いていれば、そのメッセージを返す (#66)。
