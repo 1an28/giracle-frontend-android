@@ -201,15 +201,22 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     }
 
     // ---- 未読の始まりへ戻る (docs/UI_PRINCIPLES.md の C-5) ----
-    // 未読の始まり (開いた時点の既読より新しい、いちばん古いメッセージ) の、一覧での位置。読み込んでいなければ -1
+    // 未読の始まり (開いた時点の既読より新しい、いちばん古いメッセージ) の、一覧での位置。分からなければ -1。
+    // 分からないのは: 既読側のメッセージを 1 件も読み込んでいない (未読の始まりはもっと古い側にある。通知から飛んだ後・「最新へ」の後など) とき、
+    // キャッシュを出している (切れていた間の投稿が無い。D-047) とき
     val unreadIndex by remember(channelId) {
         derivedStateOf {
             val before = readBefore[channelId]
-            if (before.isNullOrEmpty()) -1
+            if (before.isNullOrEmpty() || history.fromCache) -1
             else {
-                val i = history.messages.indexOfLast { ChatStore.isAfter(it.createdAt, before) }
-                // 一覧の先頭に「新しい側を読み込み中」の行があると、位置が 1 つずれる
-                if (i < 0) -1 else i + (if (history.atEnd) 0 else 1)
+                val msgs = history.messages
+                val i = msgs.indexOfLast { ChatStore.isAfter(it.createdAt, before) }
+                when {
+                    i < 0 -> -1
+                    i == msgs.lastIndex && !history.atTop -> -1
+                    // 一覧の先頭に「新しい側を読み込み中」の行があると、位置が 1 つずれる
+                    else -> i + (if (history.atEnd) 0 else 1)
+                }
             }
         }
     }
