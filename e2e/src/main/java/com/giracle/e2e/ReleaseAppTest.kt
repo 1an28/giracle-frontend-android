@@ -305,8 +305,9 @@ class ReleaseAppTest {
                 tap(wait(res("composer.input"), 5_000, "入力欄"))
                 wait(res("composer.input"), 5_000, "入力欄").text = reply
                 tap(wait(res("composer.send"), 5_000, "送信ボタン"))
-                // 読んでいる途中で返すと、送った返信が画面の外 (一番下) に出て見えないことがある。それも記録する
-                done(By.textContains(reply), timeoutMs = 8_000, required = false)
+                // 読んでいる途中で返すと、送った返信が画面の外 (一番下) に出て見えないことがある。それも記録する。
+                // 送信待ちの一覧 (composer.outbox) にも本文が一時的に出るので、メッセージの一覧の中だけを探す
+                done(By.res("channel.messages").hasDescendant(By.textContains(reply)), timeoutMs = 8_000, required = false)
             }
             waitFor("サーバーに返信が届く") { admin.recentTexts(channelId).contains(reply) }
             shot("ux_reply")
