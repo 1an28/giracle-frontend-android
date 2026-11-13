@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ import com.giracle.android.ui.common.Avatar
 import com.giracle.android.ui.common.Badge
 import com.giracle.android.ui.common.LocalStore
 import com.giracle.android.ui.common.SubScreen
+import com.giracle.android.ui.common.TestTags
 import com.giracle.android.ui.common.dayLabel
 import com.giracle.android.ui.common.friendlyTime
 import com.giracle.android.ui.common.rememberUser
@@ -93,7 +95,7 @@ private fun InboxRow(item: InboxItem, onOpen: () -> Unit, onRead: () -> Unit) {
     val store = LocalStore.current
     val m = item.message
     val u = rememberUser(m.userId)
-    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 16.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.fillMaxWidth().testTag(TestTags.inboxItem(m.id)).clickable(onClick = onOpen).padding(start = 16.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Avatar(m.userId, 36.dp)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
