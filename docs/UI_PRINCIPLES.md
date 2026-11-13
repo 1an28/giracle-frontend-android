@@ -15,11 +15,12 @@ Web 版・Flutter 版をなぞる前提を捨て、チャットクライアン�
 
 ### 調べ方と、その限り
 
-- この開発環境から開けるのは developer.android.com と GitHub だけだった。nngroup.com・uxmatters.com・viget.com・
-  Play ストア・Telegram の要望掲示板などは開けず、検索エンジンの要約 (検索結果のページから抜き出したもの) で読んだ。
-  **要約で読んだものは「(要約)」と書く**。原文の言い回し・数値の細部は確かめていない。
+- 2026-11-13 に書いたときは、この開発環境から開けるのは developer.android.com と GitHub だけで、ほかは検索エンジンの要約で読んだ。
+  2026-11-14 に、ネットワークを制限なしにした環境 (D-053) で原文を開き直した (#69)。原文で確かめたものには何も付けず、
+  **今も原文を開けていないものだけ「(要約)」と書く**。原文と違っていたところは直し、その箇所に「(2026-11-14 に原文で直した)」と書いた。
+  開けなかったサイト: viget.com・venturebeat.com (ボットの確認の画面で止まる)、support.discord.com (403)、web.archive.org (接続が切れる)。
 - コードを読んで確かめた他社アプリは Element X Android (`element-hq/element-x-android`、2026-11-12 の `5b8a7a5a`) と
-  Signal Android (`signalapp/Signal-Android`、2026-11-11 の `b8544a8`) だけ。Slack・Discord・Telegram は公式ブログ・報道の要約。
+  Signal Android (`signalapp/Signal-Android`、2026-11-11 の `b8544a8`) だけ。Slack・Discord・Telegram は公式ブログ・報道・要望掲示板。
 
 ## 1. チャットクライアントの役割
 
@@ -27,11 +28,11 @@ Web 版・Flutter 版をなぞる前提を捨て、チャットクライアン�
 
 | 役割 | 出典 | Giracle での具体的な操作 |
 | --- | --- | --- |
-| 新しい発言にすぐ気づき、読む | WhatsApp が SMS より使われる理由の一つが「すぐ届く (immediacy)」(Church & de Oliveira 2013, MobileHCI。要約) | 通知・ホームの未読から開く。開いたら未読の始まりが見える |
-| 短く返す・反応する | 職場の IM は、短い質問・調整・「今話せるか」の確認に使われる (Nardi ほか 2000, CSCW。要約) | 返信・リアクション・入力 |
-| 自分宛てを拾う | Slack は「Activity」を目立つ場所に出し「Mentions and reactions」に改名した (Slack 2020 年の公式ブログ。要約) | 受信箱 (メンション・返信) |
-| 会話を切り替える | Slack は 2020 年に、届きにくかった DM の一覧を下のタブに出した (同上)。Discord は 2023 年の刷新で、サーバーと DM を別のタブに戻した (Discord 公式ブログ。要約) | チャンネル間の移動 |
-| 探す | Discord は刷新への声を受けて、DM 全体の検索を足した (同上) | 検索 |
+| 新しい発言にすぐ気づき、読む | WhatsApp が SMS より使われる理由の一つが「すぐ届く (immediacy)」(Church & de Oliveira 2013, MobileHCI。原文では利点として「費用・つながりの感覚・すぐ届くこと」を挙げ、同時に「SMS の方が確実で、私的なことを守れる」と見られていた) | 通知・ホームの未読から開く。開いたら未読の始まりが見える |
+| 短く返す・反応する | 職場の IM は、短い質問・調整・「今話せるか」の確認に使われる (Nardi ほか 2000, CSCW) | 返信・リアクション・入力 |
+| 自分宛てを拾う | Slack は「Activity」を目立つ場所に出し「Mentions and reactions」に改名した (Slack 2020 年の公式ブログ) | 受信箱 (メンション・返信) |
+| 会話を切り替える | Slack は 2020 年に、届きにくかった DM の一覧を下のタブに出した (同上)。Discord は 2023-12 の刷新でサーバーと DM を別のタブに分けたが、2024-05 に「頭の中でスマホとデスクトップを切り替えにくい」という声を受けて一つに戻した (Discord 公式ブログ。2026-11-14 に原文で直した。前は「別のタブに戻した」と書いていた) | チャンネル間の移動 |
+| 探す | Discord は試験版への声を受けて、DM 全体の検索を足した (同上) | 検索 |
 | つながっていない間も使える | 低評価レビューの多くが「Connecting…のまま読めない・送れない」(4 章) | キャッシュの表示・送信待ち (D-029) |
 
 ここから、**読む・返す・自分宛てを拾う・切り替える・探す** を「よく使う操作」として扱う。
@@ -42,16 +43,16 @@ Web 版・Flutter 版をなぞる前提を捨て、チャットクライアン�
 
 | 基準 | 値 | 出典 |
 | --- | --- | --- |
-| 応答の目安 | 0.1 秒: 直接操作している感覚が保たれる。1 秒: 考えの流れが途切れない。10 秒: 注意が保たれる限界 | Nielsen 1993 (Miller 1968・Card ほか 1991 に基づく。要約)。「Miller が 0.1/1/10 を言った」という引き方は誤りとする指摘もある (要約) |
+| 応答の目安 | 0.1 秒: 直接操作している感覚が保たれる。1 秒: 考えの流れが途切れない。10 秒: 注意が保たれる限界 | Nielsen 1993 (Miller 1968・Card ほか 1991 に基づく)。数値は実験で確かめたものではないとする批判がある (Dubuc 2018)。マウスの操作の実験では、遅れに気づく境目は 34〜137ms、平均 65ms だった (Forch ほか 2017。Dubuc 2018 の引用で読んだ) |
 | 押せる範囲 | 48dp × 48dp 以上 | Android 公式「Make apps more accessible」(本文を確かめた) |
-| 片手の親指で押せる大きさ | 単発の操作 9.2mm、続けて押す操作 9.6mm | Parhi, Karlson, Bederson 2006, MobileHCI (要約)。48dp ≒ 7.6mm (160dpi 基準) |
-| 指の精度は位置で変わる | 画面の中央 7mm、端 9mm、隅 12mm | Hoober 2017 (UXmatters「Design for Fingers, Touch, and People」・講演の再掲。要約) |
-| 持ち方 | 片手 49%・片手で持ち他方で操作 36%・両手 15% (1,333 件の観察、2013) | Hoober 2013 (UXmatters。要約)。Hoober 自身が 2017 年に、古い前提の上の結論だったと書き直している (要約)。「親指の届く範囲」の緑・黄・赤の図は誤りだとも述べている (要約) |
-| 下限 (参考) | WCAG 2.2 の 2.5.8 (AA) は 24 CSS px、2.5.5 (AAA) は 44 CSS px、Apple は 44pt | W3C・Apple (要約)。Android の 48dp より緩いので、このアプリでは 48dp を使う |
+| 片手の親指で押せる大きさ | 単発の操作 9.2mm、続けて押す操作 9.6mm | Parhi, Karlson, Bederson 2006, MobileHCI。48dp ≒ 7.6mm (160dpi 基準) |
+| 指の精度は位置で変わる | 画面の中央 7mm から隅 12mm。端に沿う行は高さ 9〜10mm 以上 | Hoober 2017 Part 3 (2026-11-14 に原文で直した。前は「端 9mm」と書いていたが、本文の 9〜10mm は端に置く行の高さの勧め) |
+| 持ち方 | 片手 49%・片手で持ち他方で操作 36%・両手 15% (2013 年の 1,333 件の観察のうち、画面に触れていた 780 人の割合) | Hoober 2013 (UXmatters)。Hoober 自身が 2017 年 (Part 1) に、昔の記事はデスクトップの観察・古い基準・逸話に基づく前提を含んでいて、その後の調査で捨てたと書き、まとめ直している。親指の届く範囲の図は「よく知られているが誤り」とし、利用者は画面の中央を見て押すのを好むと述べている |
+| 下限 (参考) | WCAG 2.2 の 2.5.8 (AA) は 24 CSS px、2.5.5 (AAA) は 44 CSS px、Apple は 44pt | W3C・Apple (Apple の HIG では iOS の既定の大きさが 44×44pt、最小が 28×28pt)。Android の 48dp より緩いので、このアプリでは 48dp を使う |
 | 文字の濃さの差 | 18sp 未満 (太字は 14sp 未満) で 4.5:1、それ以外 3:1 | Android 公式 (本文を確かめた) |
 | フレーム | 60fps で 16ms 以内。700ms を超えると「固まった」フレーム | Android 公式「Slow rendering」(本文を確かめた) |
 | 起動 | コールド 5 秒・ウォーム 2 秒・ホット 1.5 秒以上を Android vitals が「長すぎる」とする | Android 公式「App startup time」(本文を確かめた) |
-| 待ち時間の見せ方 | 136 人の比較で、体感の待ち時間はスケルトン 2.82 秒 > 回転アイコン 2.41 秒 > 空白 2.29 秒。「速く読み込まれた」と答えた割合はスケルトン 59%・回転 74%・空白 66% | Viget 2017「A Bone to Pick with Skeleton Screens」(要約。原文の表は開けていない)。逆の結果を言う記事もあり、標本が小さい |
+| 待ち時間の見せ方 | 136 人の比較で、体感の待ち時間はスケルトン 2.82 秒 > 回転アイコン 2.41 秒 > 空白 2.29 秒。「速く読み込まれた」と答えた割合はスケルトン 59%・回転 74%・空白 66% | Viget 2017「A Bone to Pick with Skeleton Screens」(要約。viget.com はボットの確認で止まり、2026-11-14 も原文を開けていない)。逆の結果を言う記事もあり、標本が小さい |
 
 Hoober の指摘から、「親指の届く範囲の図」で上下を切るのではなく、**隅を避け、よく使う操作を中央寄り・下寄りに置く** と読む。
 持ち方は人と場面で変わるので、左右どちらかに寄せることはしない。
@@ -74,24 +75,35 @@ Hoober の指摘から、「親指の届く範囲の図」で上下を切るの�
 - 新しい会話とカメラの丸いボタンを右下に置く (`MainFloatingActionButtons.kt`)。
 - 未読だけに絞る操作がある (`MainToolbar.kt` の `onFilterUnreadChatsClick`)。
 
-### Slack (公式ブログの要約)
+### Slack (公式ブログ。2023 年の発言は報道の要約)
 
 - 2020 年のスマホ版の刷新: DM の一覧が届きにくかった (iPhone は知られていない横すべり、Android は選択の一覧) ので、下のタブに出した。
   「Activity」を目立つ場所に出し、「Mentions and reactions」に改名した。
-- 2023 年の刷新はデスクトップ版 (Home・DMs・Activity)。発表の数時間で批判が出た。製品デザインの責任者は「Slack は通知の量と、情報の置き場所の多さで圧倒されると感じられる、という声が最も多かった」と説明した (VentureBeat。要約)。
+- 2023 年の刷新はデスクトップ版 (Home・DMs・Activity)。発表の数時間で批判が出た。製品デザインの責任者は「Slack は通知の量と、情報の置き場所の多さで圧倒されると感じられる、という声が最も多かった」と説明した (VentureBeat。要約。venturebeat.com はボットの確認で止まり開けていない)。
 
-### Discord (公式ブログ・報道・サポートの掲示板の要約)
+### Discord (公式ブログ・報道。掲示板の声は要約)
 
-- 2023-12 の刷新に強い反発。掲示板の声は「サーバーと DM の行き来に 2〜3 秒かかる」「前より遅い」「操作がもたつく」。
-  元に戻さないと明言した (要約)。
-- 公式ブログでは、試験中の声を受けて作り直し、サーバーと DM を別のタブに戻し、サーバーの縦の帯を残し、DM の先頭固定・DM 全体の検索を足したとする。
-  アプリを開く時間は iOS で 43%・Android で 55% 短くなったとする (要約)。2024-04 のパッチノートでサーバーの切り替えが 30% 以上速くなったとする (要約)。
-- 教訓 (持ち主との相談どおり): 反発の中身は「配置を変えたこと」より **遅さ** と **よく使う操作が遠くなったこと**。
+2026-11-14 に公式ブログと Android Authority の原文で直した。前は「試験中の声を受けてサーバーと DM を別のタブに戻した」と書いていたが、逆だった。
 
-### Telegram Android (報道・要望掲示板の要約)
+- 2023-12-05 の刷新 (公式ブログ「Improving Our Mobile Experience」): 下のタブを入れ、**サーバーと DM を別のタブに分けた**。
+  試験版への声を受けて、サーバーを横に並べる案をやめて縦の帯を残し、DM 全体の検索を足した。すべらせて返信を入れた。
+  アプリを開く時間は Android で 55%・iOS で 43% 短くなったとする。
+- 強い反発。Discord は古い配置には戻せない、と伝えた (Android Authority)。Android Authority が挙げる不満は、デスクトップとの違い・慣れた操作が使えないこと・不具合。
+  掲示板の声は「サーバーと DM の行き来に 2〜3 秒かかる」「前より遅い」(要約。support.discord.com は 403 で開けていない。遅さを反発の中身として挙げた原文は、ほかに見つけていない)。
+- 2024-04 のパッチノート: サーバーの切り替えを 30% 以上速くした。
+- 2024-05-22 (公式ブログ「Refining Discord's Mobile Experience With Your Feedback」): **サーバーと DM のタブを一つに戻した**。
+  理由は「スマホとデスクトップで、頭の中の切り替えが難しい。大事な人と場所が、デスクトップと違う場所にある」という声が一貫して多かったこと。
+  すべらせて返信も、すべらせてメンバー一覧に戻す (返信は設定で残せるようにする) とした。
+- 教訓: 反発の中身には **配置そのもの** (よく使う行き先を分けたこと、ほかの端末と配置が違うこと) があり (公式ブログで確かめた)、
+  Discord は速くした後も、配置を半年で戻した。速くするだけでは足りなかった。**遅さ** が中身だったことは、掲示板の要約でしか読めていない。
+  (2026-11-13 の持ち主との相談では「配置より遅さとよく使う操作が遠くなったこと」を教訓にしていた。原文では、これは半分だけ合っている)
 
-- 2026-02 の 12.4.0 で、横から出るメニューを、常に出る下の 4 つのタブに替えた。反応は否定的。
-  主な声は「チャットの一覧の場所が減った」「時間のほとんどはチャットのタブにいる (他のタブは場所の無駄)」「隠す設定が欲しい」(9to5Google・掲示板。要約)。
+### Telegram Android (報道・要望掲示板)
+
+- 2026-02 の 12.4.0 で、横から出るメニューを無くし、常に出る下の 4 つのタブに替えた。9to5Google は「反応は好意的とは言えない」と書く。
+  要望掲示板 (bugs.telegram.org/c/59054、2026-02-07) の声: 「常に出る下の帯 (チャット・連絡先・設定・プロフィール) は、たまにしか使わない行き先に場所を使う。
+  チャットの見える数が減り、小さい画面と片手の操作で特に困る」「主な中身はチャット」「下の帯を隠す設定が欲しい」。
+  (9to5Google がリンクした Reddit のスレッドは 403 で開けていない)
 - 教訓: **行き先が少なく、ほとんど 1 か所にいるアプリでは、常に出る帯は場所を取るだけ**。Slack の 2020 年 (行き先が多く、届きにくかったものを出した) とは条件が違う。
 
 ## 4. ストアレビューの傾向
@@ -137,7 +149,7 @@ Hoober の指摘から、「親指の届く範囲の図」で上下を切るの�
 
 - **P-1 待たせない**: 一度見たもの (チャンネルの一覧・メッセージ・画像) は、通信を待たずにすぐ出し、新しいものは裏で取って差し替える。
   画面の中央に回転アイコンを出すのは、手元に何も無いときだけ。スケルトンは使わない。
-  根拠: Nielsen の 1 秒、Viget 2017、Discord の刷新への反発 (遅さ)、レビューの「Connecting…」。
+  根拠: Nielsen の 1 秒、Viget 2017 (要約)、Discord の刷新への反発 (遅さ。掲示板の要約)、レビューの「Connecting…」。
 - **P-2 つながっていなくても読める・書ける**: 接続の状態は小さく正直に出すが、それで読む・書くを止めない (送信は D-029 の送信待ちへ)。
   根拠: レビューの「接続・送受信」(Telegram の低評価の約 4 分の 1)。
 - **P-3 よく使う操作は近くに**: 読む・返す・自分宛てを拾う・切り替える・探すは、ホームかチャンネルから 2 手以内。
@@ -151,7 +163,7 @@ Hoober の指摘から、「親指の届く範囲の図」で上下を切るの�
   いつも見る必要のない行き先は、まとめて 1 つの入口にする。
   根拠: Telegram 2026 の反発、Slack 2020 (行き先が多い場合)。
 - **P-6 配置を変えたら、手数と時間で比べる**: 見た目の変更は止めないが、よく使う操作の手数が増えたり、表示までの時間が延びたりしたら直す。
-  根拠: Discord 2023 の教訓。CI で手数と時間を測る (8 章)。
+  根拠: Discord 2023 の教訓 (配置を戻すまで半年かかった)。CI で手数と時間を測る (8 章)。
 - **P-7 判断の材料を一覧に出す**: どのチャンネルから読むかを、開かずに決められるようにする (最後の発言・時刻・自分宛ての数)。
   根拠: 比べた全アプリ (Element X・Signal・Slack・Discord・Telegram) の一覧が、最後の発言と時刻を出している
   (Element X・Signal はコードで確かめた。他は一般に知られた画面からの判断で、出典は付けていない)。
@@ -348,24 +360,33 @@ switch_after_reconnect の遅い回線の値には、A の取り直しとの重�
 
 ## 出典
 
-- Nielsen, J. (1993) Response Times: The 3 Important Limits. https://www.nngroup.com/articles/response-times-3-important-limits/ (要約)
-- Parhi, P., Karlson, A., Bederson, B. (2006) Target Size Study for One-Handed Thumb Use on Small Touchscreen Devices. MobileHCI. https://doi.org/10.1145/1152215.1152260 (要約)
-- Hoober, S. (2013) How Do Users Really Hold Mobile Devices? https://www.uxmatters.com/mt/archives/2013/02/how-do-users-really-hold-mobile-devices.php (要約)
-- Hoober, S. (2017) Design for Fingers, Touch, and People, Part 3. https://www.uxmatters.com/mt/archives/2017/07/design-for-fingers-touch-and-people-part-3.php (要約)
-- Viget (2017) A Bone to Pick with Skeleton Screens. https://www.viget.com/articles/a-bone-to-pick-with-skeleton-screens/ (要約)
-- Church, K., de Oliveira, R. (2013) What's up with WhatsApp? MobileHCI. https://doi.org/10.1145/2493190.2493225 (要約)
-- Nardi, B., Whittaker, S., Bradner, E. (2000) Interaction and Outeraction: Instant Messaging in Action. CSCW. (要約)
-- Khalid, H., Shihab, E., Nagappan, M., Hassan, A. (2015) What Do Mobile App Users Complain About? IEEE Software. (要約。低評価の分類の参考にした)
+原文で確かめた日付は、印が無いものは 2026-11-14 (#69)。(要約) は今も原文を開けていないもの。
+
+- Nielsen, J. (1993) Response Times: The 3 Important Limits. https://www.nngroup.com/articles/response-times-3-important-limits/
+- Dubuc, G. (2018) Magic numbers. Web Performance Calendar. https://calendar.perfplanet.com/2018/magic-numbers/ (Forch ほか 2017「Are 100 ms Fast Enough?」の結果はここからの引用で読んだ)
+- Parhi, P., Karlson, A., Bederson, B. (2006) Target Size Study for One-Handed Thumb Use on Small Touchscreen Devices. MobileHCI. https://doi.org/10.1145/1152215.1152260 (著者の PDF: https://www.cs.umd.edu/~bederson/images/pubs_pdfs/p203-parhi.pdf)
+- Hoober, S. (2013) How Do Users Really Hold Mobile Devices? https://www.uxmatters.com/mt/archives/2013/02/how-do-users-really-hold-mobile-devices.php
+- Hoober, S. (2017) Design for Fingers, Touch, and People, Part 1. https://www.uxmatters.com/mt/archives/2017/03/design-for-fingers-touch-and-people-part-1.php
+- Hoober, S. (2017) Design for Fingers, Touch, and People, Part 3. https://www.uxmatters.com/mt/archives/2017/07/design-for-fingers-touch-and-people-part-3.php
+- Viget (2017) A Bone to Pick with Skeleton Screens. https://www.viget.com/articles/a-bone-to-pick-with-skeleton-screens/ (要約。ボットの確認で開けない)
+- Church, K., de Oliveira, R. (2013) What's up with WhatsApp? MobileHCI. https://doi.org/10.1145/2493190.2493225 (著者の PDF: https://www.ic.unicamp.br/~oliveira/doc/MHCI2013_Whats-up-with-whatsapp.pdf)
+- Nardi, B., Whittaker, S., Bradner, E. (2000) Interaction and Outeraction: Instant Messaging in Action. CSCW. https://www.artifex.org/~bonnie/pdf/Nardi_outeraction.pdf
+- Khalid, H., Shihab, E., Nagappan, M., Hassan, A. (2015) What Do Mobile App Users Complain About? IEEE Software. https://www.swag.uwaterloo.ca/www/assets/other/papers/khalid-ieeesw-2014.pdf (低評価の分類の参考にした。iOS の 20 のアプリの低評価 6,390 件から 12 の種類)
 - Android: Make apps more accessible https://developer.android.com/guide/topics/ui/accessibility/apps
 - Android: Accessibility testing (Compose) https://developer.android.com/develop/ui/compose/accessibility/testing
 - Android: Slow rendering https://developer.android.com/topic/performance/vitals/render
 - Android: App startup time (vitals) https://developer.android.com/google/play/vitals/launch-time
-- W3C WCAG 2.2 2.5.8 / 2.5.5、Apple Human Interface Guidelines (要約)
-- Slack (2020) A simpler, more organized Slack on your phone. https://slack.com/blog/productivity/simpler-more-organized-slack-mobile-app (要約)
-- VentureBeat (2023) Slack defends controversial redesign amid sharp criticism (要約)
-- Discord: Improving our mobile experience / Refining Discord's mobile experience with your feedback / Patch notes April 2024 (https://discord.com/blog/ 以下。要約)
-- Discord サポートの掲示板「Mobile Update Feedback」など (要約)
-- 9to5Google (2026-02-07) Telegram for Android redesign goes all in on Liquid Glass (要約)
+- W3C WCAG 2.2 Understanding 2.5.8 https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html ・2.5.5 https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html
+- Apple Human Interface Guidelines: Accessibility https://developer.apple.com/design/human-interface-guidelines/accessibility (iOS・iPadOS の既定の大きさ 44×44pt、最小 28×28pt)
+- Slack (2020-05-13) Why we reimagined Slack for iPhone and Android—and what we learned along the way. https://slack.com/blog/productivity/simpler-more-organized-slack-mobile-app
+- VentureBeat (2023) Slack defends controversial redesign amid sharp criticism (要約。ボットの確認で開けない)
+- Discord (2023-12-05) Improving Our Mobile Experience. https://discord.com/blog/improving-our-mobile-experience
+- Discord (2024-05-22) Refining Discord's Mobile Experience With Your Feedback. https://discord.com/blog/refining-discords-mobile-experience-with-your-feedback
+- Discord Patch Notes: April 2024. https://discord.com/blog/discord-patch-notes-april-2024
+- Android Authority: Discord's new mobile layout (2023-12). https://www.androidauthority.com/discord-new-mobile-layout-update-3392631/
+- Discord サポートの掲示板「Mobile Update Feedback」など (要約。support.discord.com は 403 で開けない)
+- 9to5Google (2026-02-07) Telegram for Android redesign goes all in on Liquid Glass. https://9to5google.com/2026/02/07/telegram-for-android-redesign-goes-all-in-on-liquid-glass-rolling-out-now/
+- Telegram の要望掲示板「Disable iOS design in Android app」(2026-02-07) https://bugs.telegram.org/c/59054
 - Element X Android https://github.com/element-hq/element-x-android (`5b8a7a5a`)
 - Signal Android https://github.com/signalapp/Signal-Android (`b8544a8`)
 - レビューのデータ: https://github.com/Mad03633/Telegram-App-Reviews-Sentiment-Analysis (`7c6ec55`)、https://github.com/RalphSaridar369/whatsapp-reviews-insights (`79d542b`)
