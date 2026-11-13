@@ -232,7 +232,8 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         inbox.filter { it.message.channelId == channelId && it.message.id in ids }.forEach { store.readInbox(it.message.id) }
     }
 
-    val cb = remember(channelId) {
+    // すべらせて返信できるのは、参加しているチャンネルだけ (入力欄があるとき)
+    val cb = remember(channelId, joined) {
         MessageCallbacks(
             onLongPress = { actionsFor = it },
             onUserClick = { userSheet = it },
@@ -243,6 +244,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
             onImageClick = { viewing = it },
             onFileDownload = { f -> download(ctx, graph.api.fileUrl(f.id), f, graph.prefs.token) },
             onExpand = { expanded = it },
+            onSwipeReply = if (joined) { m -> replyTo = m; editing = null } else null,
         )
     }
 

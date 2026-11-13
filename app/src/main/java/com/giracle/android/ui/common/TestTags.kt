@@ -42,6 +42,8 @@ object TestTags {
     const val HOME_MANAGE_SERVER = "home.manage_server"
     const val HOME_SHARE_BANNER = "home.share_banner"
     fun homeChannel(channelId: String) = "home.channel:$channelId"
+    fun homeChannelDrag(channelId: String) = "home.channel_drag:$channelId"
+    const val HOME_REORDER = "home.reorder"
 
     // チャンネル
     const val CHANNEL_MESSAGES = "channel.messages"
@@ -57,6 +59,8 @@ object TestTags {
     /** 送信待ちの一覧 (#30) */
     const val COMPOSER_OUTBOX = "composer.outbox"
     const val COMPOSER_SEND = "composer.send"
+    /** 返信先の表示 (入力欄の上) */
+    const val COMPOSER_REPLY = "composer.reply"
 
     // 設定
     const val SETTINGS_KEEP_CONNECTION = "settings.keep_connection"

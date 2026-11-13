@@ -42,6 +42,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
@@ -179,7 +184,7 @@ fun HomeScreen(loading: Boolean) {
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("参加チャンネル", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { reorder = !reorder }) { Text(if (reorder) "完了" else "並べ替え") }
+                    TextButton(onClick = { reorder = !reorder }, modifier = Modifier.testTag(TestTags.HOME_REORDER)) { Text(if (reorder) "完了" else "並べ替え") }
                 }
             }
             if (joined.isEmpty() && !loading) {
@@ -197,14 +202,17 @@ fun HomeScreen(loading: Boolean) {
                         nav.openChannel(c.id)
                     },
                     onMove = { delta ->
-                        val ids = joined.map { it.id }.toMutableList()
+                        // 今の並び (order の最新の値) から計算する。描き直しの前に続けて呼ばれても、古い並びを使わない
+                        val shown = joined.map { it.id }.toSet()
+                        val ids = (order.filter { it in shown } + joined.map { it.id }.filter { it !in order }).toMutableList()
                         val i = ids.indexOf(c.id)
                         val j = (i + delta).coerceIn(0, ids.lastIndex)
-                        if (i != j) {
+                        if (i >= 0 && i != j) {
                             ids.removeAt(i); ids.add(j, c.id)
                             order = ids
                             graph.prefs.channelOrder = ids
-                        }
+                            true
+                        } else false
                     },
                 )
             }
@@ -224,9 +232,16 @@ private fun NavRow(icon: ImageVector, label: String, tag: String? = null, traili
 }
 
 @Composable
-private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boolean, selected: Boolean, onClick: () -> Unit, onMove: (Int) -> Unit) {
+private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boolean, selected: Boolean, onClick: () -> Unit, onMove: (Int) -> Boolean) {
+    // 並べ替え中は、右端のつまみを上下に引いて動かせる (D-044)。1 行分動かすごとに入れ替え、指の下に行が付いてくる
+    var rowHeight by remember { mutableStateOf(1) }
+    var drag by remember { mutableStateOf(0f) }
+    val move by androidx.compose.runtime.rememberUpdatedState(onMove)
     Row(
         Modifier.fillMaxWidth().testTag(TestTags.homeChannel(c.id))
+            .onSizeChanged { rowHeight = it.height.coerceAtLeast(1) }
+            .graphicsLayer { translationY = drag }
+            .then(if (drag != 0f) Modifier.zIndex(1f).background(MaterialTheme.colorScheme.surfaceContainerHigh) else Modifier)
             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
             .clickable(enabled = !reorder, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -244,6 +259,24 @@ private fun ChannelRow(c: Channel, unread: Boolean, muted: Boolean, reorder: Boo
         if (reorder) {
             IconButton(onClick = { onMove(-1) }) { Icon(Icons.Default.KeyboardArrowUp, "上へ") }
             IconButton(onClick = { onMove(1) }) { Icon(Icons.Default.KeyboardArrowDown, "下へ") }
+            Icon(
+                AppIcons.DragUpDown, "引いて並べ替え",
+                Modifier.testTag(TestTags.homeChannelDrag(c.id)).size(40.dp).padding(8.dp).pointerInput(c.id) {
+                    detectDragGestures(
+                        onDragEnd = { drag = 0f },
+                        onDragCancel = { drag = 0f },
+                    ) { change, amount ->
+                        change.consume()
+                        drag += amount.y
+                        // 半行を越えたら 1 行動かす。動かした分だけ見た目の位置を戻す (行が新しい位置に来るので)。
+                        // 1 回の動きで動かすのは 1 行まで (次の行の入れ替えは、並びが描き直されてから)
+                        // 端の行で動かせなかったときは、半行より先へは引けないようにする (指から行が離れないように)
+                        if (drag > rowHeight / 2f) { if (move(1)) drag -= rowHeight else drag = rowHeight / 2f }
+                        else if (drag < -rowHeight / 2f) { if (move(-1)) drag += rowHeight else drag = -rowHeight / 2f }
+                    }
+                },
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Spacer(Modifier.width(0.dp))
     }

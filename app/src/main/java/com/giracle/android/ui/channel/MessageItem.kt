@@ -91,6 +91,8 @@ class MessageCallbacks(
     val onImageClick: (FileAttached) -> Unit,
     val onFileDownload: (FileAttached) -> Unit,
     val onExpand: (Message) -> Unit,
+    /** 右へすべらせて返信する (D-043)。null なら (チャンネルに参加していないなど) すべらせない */
+    val onSwipeReply: ((Message) -> Unit)? = null,
 )
 
 /**
@@ -114,6 +116,7 @@ fun MessageItem(
             SystemMessage(m, cb)
         } else {
             m.replyingMessageId?.let { ReplyPreview(it, m.channelId, cb) }
+            SwipeToReply(enabled = cb.onSwipeReply != null, onReply = { cb.onSwipeReply?.invoke(m) }) {
             Row(
                 Modifier.fillMaxWidth()
                     .testTag(TestTags.message(m.id))
@@ -128,6 +131,7 @@ fun MessageItem(
                     if (showHeader) Header(m, cb)
                     Body(m, cb)
                 }
+            }
             }
         }
         if (newLineBelow) NewLine()

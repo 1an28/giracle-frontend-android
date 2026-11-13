@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -201,6 +202,46 @@ class UiScreenshotTest {
         // 右上の「閉じる」で閉じる
         rule.onNodeWithContentDescription("閉じる").performClick()
         waitGone(TestTags.IMAGE_VIEWER)
+    }
+
+    /** メッセージを右へすべらせると返信になる (D-043) */
+    @Test fun swipeToReply() {
+        assumeTrue(server != null)
+        val ch = newChannel("swipe")
+        val target = send(ch, "すべらせて返信するメッセージ")
+
+        startApp()
+        click(TestTags.homeChannel(ch))
+        waitTag(TestTags.message(target))
+        // 指を離さずに右へ 120dp 動かし、離す
+        rule.onNodeWithTag(TestTags.message(target)).performTouchInput {
+            down(centerLeft + androidx.compose.ui.geometry.Offset(20f, 0f))
+            repeat(10) { moveBy(androidx.compose.ui.geometry.Offset(36f, 0f)) }
+            up()
+        }
+        waitTag(TestTags.COMPOSER_REPLY); shot("11_swipe_reply")
+    }
+
+    /** ホームの並べ替え: つまみを下へ引くと 1 つ下と入れ替わる (D-044) */
+    @Test fun dragToReorder() {
+        assumeTrue(server != null)
+        // 名前で並ぶとき先頭に来るよう、数字で始める
+        val a = newChannel("0drag-a")
+        val b = newChannel("0drag-b")
+        startApp()
+        waitTag(TestTags.homeChannel(a))
+        click(TestTags.HOME_REORDER)
+        // つまみは行 (押せる要素) の中にまとめられるので、まとめる前の木で探す
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(TestTags.homeChannelDrag(a)), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        val h = rule.onNodeWithTag(TestTags.homeChannel(a)).fetchSemanticsNode().size.height.toFloat()
+        rule.onNodeWithTag(TestTags.homeChannelDrag(a), useUnmergedTree = true).performTouchInput {
+            down(center)
+            repeat(10) { moveBy(androidx.compose.ui.geometry.Offset(0f, h / 8f)) }
+            up()
+        }
+        rule.waitForIdle(); shot("12_reorder_drag")
+        val order = ApplicationProvider.getApplicationContext<GiracleApp>().graph.prefs.channelOrder
+        assertTrue("b が a より上に来る: $order", order.indexOf(b) in 0 until order.indexOf(a))
     }
 
     @Test fun longText() {

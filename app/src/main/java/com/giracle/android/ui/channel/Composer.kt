@@ -355,7 +355,7 @@ fun Composer(
             if (editing != null) Banner(Icons.Default.Edit, "メッセージを編集中", onCancelEdit)
             replyTo?.let { r ->
                 val u = rememberUser(r.userId)
-                Banner(AppIcons.Reply, "${u?.name ?: ""} へ返信: ${store.plainText(r.content).replace('\n', ' ')}", onCancelReply)
+                Banner(AppIcons.Reply, "${u?.name ?: ""} へ返信: ${store.plainText(r.content).replace('\n', ' ')}", onCancelReply, Modifier.testTag(TestTags.COMPOSER_REPLY))
             }
             if (attachments.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -406,8 +406,8 @@ fun Composer(
 }
 
 @Composable
-private fun Banner(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, onClose: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun Banner(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(icon, null, Modifier.size(16.dp))
         Text(text, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
         IconButton(onClick = onClose) { Icon(Icons.Default.Close, "取り消す") }
