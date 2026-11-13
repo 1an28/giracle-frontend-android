@@ -36,6 +36,20 @@ LAN_ARGS=()
 echo "e2e: $(( $(date +%s) - t0 ))s"
 
 "$ADB" logcat -d > "$OUT/logcat.txt" 2>&1
+
+# よく使う作業を、遅い回線でも測る (D-046)。上の実行は端末の localhost (adb reverse) なので、通信をほぼ待たない。
+# LAN のアドレス (エミュレータの仮想ネットワークを通る) につなぎ、エミュレータの遅延 (edge: 80〜400ms) を足す
+if [ -n "$LAN_SERVER" ]; then
+  "$ADB" logcat -c || true
+  "$ADB" emu network delay edge
+  t1=$(date +%s)
+  "$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 \
+    -e class com.giracle.e2e.ReleaseAppTest#uxTasks -e uxServer "$LAN_SERVER" -e uxNet slow \
+    "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument-slow.txt"
+  echo "e2e (遅い回線の ux): $(( $(date +%s) - t1 ))s"
+  "$ADB" emu network delay none
+  "$ADB" logcat -d >> "$OUT/logcat.txt" 2>&1
+fi
 "$ADB" logcat -b crash -d > "$OUT/crash.txt" 2>&1
 "$ADB" pull "/sdcard/Android/data/$TEST_PKG/files/screenshots" "$OUT/" > /dev/null 2>&1 || true
 
@@ -65,14 +79,23 @@ show_clues() {
 }
 # am instrument は失敗しても終了コードが 0 なので、出力で判断する
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
+if [ -n "$LAN_SERVER" ] && ! grep -q '^OK (' "$OUT/instrument-slow.txt"; then
+  echo "::error::遅い回線でのよく使う作業の測定 (uxTasks) が失敗した。instrument-slow.txt を見る"
+  tail -n 40 "$OUT/instrument-slow.txt"
+  status=1
+fi
 # 条件付きの確認 (assume) は、飛ばされても「OK」になる。指定したのに動いていなければ失敗にする
 echo "::group::e2e の結果の印"; grep -o "E2E-RESULT .*" "$OUT/logcat.txt"; echo "::endgroup::"
 # よく使う作業の手数と時間 (D-046)。エミュレータの時間は絶対値ではなく、前の実行 (docs/UI_PRINCIPLES.md 9 章の基準) との比較に使う
 echo "::group::よく使う作業の手数と時間 (ux)"
-grep -oE "E2E-RESULT ux task=.*" "$OUT/logcat.txt" | sed 's/E2E-RESULT ux //'
+grep -oE "E2E-RESULT ux net=.*" "$OUT/logcat.txt" | sed "s/E2E-RESULT ux //"
 echo "::endgroup::"
-if [ $status = 0 ] && ! grep -q "E2E-RESULT ux_test=done" "$OUT/logcat.txt"; then
+if [ $status = 0 ] && ! grep -q "E2E-RESULT ux_test=done net=fast" "$OUT/logcat.txt"; then
   echo "::error::よく使う作業の測定 (uxTasks) が最後まで動いていない"
+  status=1
+fi
+if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT ux_test=done net=slow" "$OUT/logcat.txt"; then
+  echo "::error::遅い回線でのよく使う作業の測定 (uxTasks) が最後まで動いていない"
   status=1
 fi
 if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT lan_test=done" "$OUT/logcat.txt"; then

@@ -43,6 +43,9 @@ class ReleaseAppTest {
     private val pkg = args.getString("appPackage") ?: "io.github.u1an28.giracle.kotlin"
     private val server = args.getString("server") ?: "http://localhost:3333"
     private val lanServer = args.getString("lanServer")
+    /** よく使う作業を測るときにつなぐサーバーと、その回線の名前 (e2e-run.sh が遅い回線でも測る。D-046) */
+    private val uxServer = args.getString("uxServer") ?: server
+    private val uxNet = args.getString("uxNet") ?: "fast"
     private val adminUser = args.getString("adminUser") ?: "admin"
     private val adminPass = args.getString("adminPass") ?: "password123"
     private val shots = File(instr.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
@@ -240,14 +243,16 @@ class ReleaseAppTest {
      * 2. サーバーを指定してログイン
      * 3. 通知の権限の確認 (Android 13 以上)。許可しても落ちないこと
      */
-    private fun freshLogin() {
+    private fun freshLogin(url: String = server) {
         shell("pm clear $pkg")
+        // LAN のアドレスのサーバーは、Android 17 以上ではローカルネットワークの権限が要る (#42)。確認画面は別のテストで確かめるので、先に許可しておく
+        if (url != server && android.os.Build.VERSION.SDK_INT >= 37) shell("pm grant $pkg android.permission.ACCESS_LOCAL_NETWORK")
         launch()
-        val url = wait(res("login.server_url"), 30_000, "ログイン画面")
+        val field = wait(res("login.server_url"), 30_000, "ログイン画面")
         shot("launch")
-        url.text = server
+        field.text = url
         wait(res("login.connect"), 5_000, "接続ボタン").click()
-        wait(res("login.username"), 20_000, "サーバー情報の取得 (login.username)").text = adminUser
+        wait(res("login.username"), 30_000, "サーバー情報の取得 (login.username)").text = adminUser
         wait(res("login.password"), 5_000, "パスワード欄").text = adminPass
         hideKeyboard() // ボタンを隠さないように
         wait(res("login.submit"), 5_000, "ログインボタン").click()
@@ -283,7 +288,7 @@ class ReleaseAppTest {
             val firstUnread = admin.recent(channelId).first { it.content == "未読01-$suffix" }.id
             val bFirst = admin.recent(chB).first { it.content.startsWith("B01-$suffix") }.id
 
-            freshLogin()
+            freshLogin(uxServer)
 
             // 読む: ホームの未読のチャンネルを開き、未読の始まりが見える
             UxTask("read_unread").run {
@@ -368,7 +373,7 @@ class ReleaseAppTest {
             }
             shot("ux_search")
             assertAlive("よく使う作業の測定の後")
-            Log.i(TAG, "E2E-RESULT ux_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
+            Log.i(TAG, "E2E-RESULT ux_test=done net=$uxNet sdk=${android.os.Build.VERSION.SDK_INT}")
         } finally {
             runCatching { admin.deleteChannel(chB) }
         }
@@ -415,10 +420,10 @@ class ReleaseAppTest {
                 conf.setWaitForIdleTimeout(idle)
             }
             if (found) {
-                Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
+                Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
                 return
             }
-            Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=-1 shown=false")
+            Log.i(TAG, "E2E-RESULT ux net=$uxNet task=$label taps=$taps ms=-1 shown=false")
             if (required) {
                 shot("ux_$label")
                 assertAlive("「$label」の測定")
