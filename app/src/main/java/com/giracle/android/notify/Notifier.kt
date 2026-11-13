@@ -63,6 +63,13 @@ object Notifier {
             }
         }
         graph.scope.launch {
+            // 別の端末で既読にした (既読時刻が通知のメッセージ以降になった) チャンネルの通知を消す (#49)。
+            // 既読時刻は、前面に戻ったときの読み込み直しと、つながっている間の WebSocket (ReadTimeUpdated) で更新される
+            graph.storeFlow.collectLatest { store ->
+                store.readTimes.collect { rt -> cancelRead(context, rt) }
+            }
+        }
+        graph.scope.launch {
             // アカウントが変わったら、前のアカウントのアイコンを使わない
             graph.storeFlow.collect { synchronized(icons) { icons.evictAll() } }
         }
@@ -214,6 +221,18 @@ object Notifier {
         val last = synchronized(conversations) { lastNotices[channelId]?.takeIf { conversations.containsKey(channelId) } } ?: return false
         post(context, last, ownReply = text)
         return true
+    }
+
+    /** 既読時刻 [readTimes] が、通知に出している一番新しいメッセージ以降になったチャンネルの通知を消す (#49) */
+    fun cancelRead(context: Context, readTimes: Map<String, String>) {
+        val done = synchronized(conversations) {
+            lastNotices.filter { (ch, n) ->
+                val t = n.createdAt ?: return@filter false
+                val read = readTimes[ch] ?: return@filter false
+                !com.giracle.android.data.ChatStore.isAfter(t, read)
+            }.keys.toList()
+        }
+        done.forEach { cancelChannel(context, it) }
     }
 
     /** 通知が払って消されたとき。通知はもう無いので、覚えている会話だけ忘れる */

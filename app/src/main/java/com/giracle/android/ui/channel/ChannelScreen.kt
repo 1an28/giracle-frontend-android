@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -146,6 +147,20 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         }
     }
     DisposableEffect(channelId) { onDispose { store.leaveChannel(channelId) } }
+
+    // 添付を他のアプリへ共有する (#50)。取ってくる間に画面を離れても続ける
+    fun shareFiles(files: List<FileAttached>) {
+        val act = ctx
+        graph.scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
+            try {
+                com.giracle.android.ui.common.ShareFiles.share(act, graph, files)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                act.applicationContext.toast("共有できませんでした: ${e.userMessage()}")
+            }
+        }
+    }
 
     // ---- 指定メッセージへ移動 ----
     suspend fun jump(messageId: String) {
@@ -339,6 +354,9 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
                     scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("text", store.plainText(m.content)))) }
                     actionsFor = null
                 }
+                if (m.files.isNotEmpty()) Action(Icons.Default.Share, if (m.files.size == 1) "添付を共有" else "添付 (${m.files.size} 件) を共有") {
+                    shareFiles(m.files); actionsFor = null
+                }
                 if (m.userId == me?.id) Action(Icons.Default.Edit, "編集") { editing = m; replyTo = null; actionsFor = null }
                 if (m.userId == me?.id || store.can("manageUser")) Action(Icons.Default.Delete, "削除", danger = true) { confirmDelete = m; actionsFor = null }
             }
@@ -371,7 +389,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     }
     whoReacted?.let { (m, code) -> WhoReactedDialog(m, code, onUser = { userSheet = it; whoReacted = null }) { whoReacted = null } }
     viewing?.let { f ->
-        ImageViewer(f, graph.api.fileUrl(f.id), onDismiss = { viewing = null }, onSave = { download(ctx, graph.api.fileUrl(f.id), f, graph.prefs.token) })
+        ImageViewer(f, graph.api.fileUrl(f.id), onDismiss = { viewing = null }, onSave = { download(ctx, graph.api.fileUrl(f.id), f, graph.prefs.token) }, onShare = { shareFiles(listOf(f)) })
     }
     expanded?.let { m ->
         Dialog(onDismissRequest = { expanded = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -440,7 +458,7 @@ private fun WhoReactedDialog(m: Message, code: String, onUser: (String) -> Unit,
  * 拡大しても粗くならないよう、画面の 2 倍 (長辺 4096px まで) の大きさで読み込む。上の「保存」で端末に保存する
  */
 @Composable
-fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () -> Unit) {
+fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () -> Unit, onShare: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val ctx = LocalContext.current
         var scale by remember { mutableStateOf(1f) }
@@ -511,6 +529,7 @@ fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () 
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                IconButton(onClick = onShare) { Icon(Icons.Default.Share, "共有", tint = Color.White) }
                 IconButton(onClick = onSave) { Icon(AppIcons.Download, "保存", tint = Color.White) }
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "閉じる", tint = Color.White) }
             }

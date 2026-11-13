@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 添付を他のアプリへ共有するときに渡すファイルの置き場 (#50。ShareFiles) -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>

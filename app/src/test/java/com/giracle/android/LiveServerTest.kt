@@ -207,6 +207,35 @@ class LiveServerTest {
         println("S-1: 直っている (未読のメンションがあっても削除できた)。#24 を閉じてよい")
     }
 
+    /** ホームの「すべて既読」: 未読のチャンネルを、それぞれの最新のメッセージまで既読にする */
+    @Test fun markAllRead() = runBlocking {
+        assumeTrue("GIRACLE_TEST_SERVER 未指定のためスキップ", server != null)
+        val suffix = System.currentTimeMillis().toString().takeLast(6)
+        val admin = client("ra-admin")
+        admin.api.signIn(System.getenv("GIRACLE_TEST_ADMIN_USER") ?: "admin", System.getenv("GIRACLE_TEST_ADMIN_PASS") ?: "password123")
+        admin.api.createInvite("ra$suffix", 1)
+        val d = client("dave")
+        d.api.signUp("dave$suffix", "pass1234", "ra$suffix")
+        val dId = d.api.signIn("dave$suffix", "pass1234").userId
+        val chs = listOf("ra1-$suffix", "ra2-$suffix").map { admin.api.createChannel(it, "すべて既読の確認").channelId }
+        try {
+            chs.forEach { runCatching { admin.api.joinChannel(it) }; d.api.joinChannel(it) }
+            d.store.initialLoad(dId)
+            eventually { if (d.ws.state.value == WsClient.State.Connected) true else null }
+            val latest = chs.map { admin.api.send(it, "未読 $it", emptyList(), null) }
+            // 新着は WebSocket で届く (開いていないので未読になる)
+            eventually { if (chs.all { d.store.hasNew.value[it] == true }) true else null }
+            assertEquals(0, d.store.markAllRead())
+            assertTrue(chs.none { d.store.hasNew.value[it] == true })
+            val rts = d.api.readTimes().associate { it.channelId to it.readTime }
+            chs.zip(latest).forEach { (ch, m) -> assertEquals(m.createdAt.take(19), rts[ch]?.take(19)) }
+            // サーバーから取り直しても未読が残っていない
+            assertTrue(chs.none { d.api.hasNew()[it] == true })
+        } finally {
+            chs.forEach { runCatching { admin.api.deleteChannel(it) } }
+        }
+    }
+
     @Test fun adminResetsPassword() = runBlocking {
         assumeTrue("GIRACLE_TEST_SERVER 未指定のためスキップ", server != null)
         val suffix = System.currentTimeMillis().toString().takeLast(6)

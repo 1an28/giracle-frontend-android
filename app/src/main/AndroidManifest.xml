@@ -60,6 +60,17 @@
             </intent-filter>
         </service>
 
+        <!-- 添付を他のアプリへ共有するときに、ファイルを渡す (#50) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- 通知の「返信」「既読にする」ボタン (D-022) -->
         <receiver
             android:name=".notify.NotificationActionReceiver"

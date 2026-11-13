@@ -34,6 +34,8 @@ object TestTags {
 
     // ホーム
     const val HOME_SETTINGS = "home.settings"
+    const val HOME_READ_ALL = "home.read_all"
+    const val HOME_READ_ALL_CONFIRM = "home.read_all_confirm"
     const val HOME_INBOX = "home.inbox"
     const val HOME_CHANNEL_BROWSER = "home.channel_browser"
     const val HOME_MEMBERS = "home.members"

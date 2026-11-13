@@ -78,6 +78,8 @@ data class InAppNotice(
     val senderId: String? = null,
     /** チャンネル名 (分かっていれば。無ければ通知を出すときにストアから探す) */
     val channelName: String? = null,
+    /** メッセージの時刻 (サーバーの時刻。分かれば)。別の端末で既読にしたら通知を消すのに使う (#49) */
+    val createdAt: String? = null,
 )
 
 /**
@@ -476,6 +478,36 @@ class ChatStore(
         pushReadTime(channelId, newest)
     }
 
+    /**
+     * 未読のあるチャンネルをすべて既読にする (ホームの「すべて既読」)。サーバーにまとめて既読にする API は無いので、
+     * チャンネルごとに最新のメッセージを 1 件取り、その時刻を既読にする。
+     * @return 既読にできなかったチャンネルの数
+     */
+    suspend fun markAllRead(): Int = coroutineScope {
+        val targets = hasNew.value.filterValues { it }.keys.toList()
+        targets.map { ch ->
+            async {
+                try {
+                    val latest = api.history(ch, fetchLength = 1, direction = "older").history.firstOrNull()
+                    if (latest != null) {
+                        val cur = readTimes.value[ch]
+                        if (cur == null || isAfter(latest.createdAt, cur)) {
+                            api.updateReadTime(ch, latest.createdAt)
+                            readTimes.update { it + (ch to latest.createdAt) }
+                        }
+                    }
+                    hasNew.update { it - ch }
+                    true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "markAllRead: $ch", e)
+                    false
+                }
+            }
+        }.awaitAll().count { !it }
+    }
+
     private fun pushReadTime(channelId: String, time: String) {
         readTimeJobs[channelId]?.cancel()
         readTimeJobs[channelId] = scope.launch {
@@ -588,7 +620,7 @@ class ChatStore(
                 if (prefs.settings.value.notifyInbox && msg.channelId !in mutedChannels.value && notificationConfig.value.let { it.enabled && it.mode != "off" }) {
                     val name = users.value[msg.userId]?.displayName ?: "誰か"
                     val title = if (type == "reply") "$name さんからの返信" else "$name さんからのメンション"
-                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id, sender = name, senderId = msg.userId))
+                    _notices.tryEmit(InAppNotice(title, plainText(msg.content), msg.channelId, msg.id, sender = name, senderId = msg.userId, createdAt = msg.createdAt))
                 }
             }
             "inbox::Deleted" -> {
@@ -670,7 +702,7 @@ class ChatStore(
                 val known = users.value[m.userId]?.displayName
                 val name = known ?: "新着メッセージ"
                 val ch = channels.value.firstOrNull { it.id == m.channelId }?.name
-                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id, sender = known, senderId = m.userId, channelName = ch))
+                _notices.tryEmit(InAppNotice(if (ch != null) "$name (#$ch)" else name, plainText(m.content), m.channelId, m.id, sender = known, senderId = m.userId, channelName = ch, createdAt = m.createdAt))
             }
         }
     }

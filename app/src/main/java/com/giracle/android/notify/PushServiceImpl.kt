@@ -62,7 +62,7 @@ class PushServiceImpl : PushService() {
             val chId = p.data?.channelId
             // 2 つの問い合わせは並べて行い、合わせて LOOKUP_TIMEOUT_MS までしか待たない
             val senderReq = async {
-                p.data?.messageId?.let { id -> runCatching { g.api.message(id).userId }.getOrNull() }
+                p.data?.messageId?.let { id -> runCatching { g.api.message(id) }.getOrNull() }
             }
             val chReq = async {
                 chId?.let { id ->
@@ -71,11 +71,12 @@ class PushServiceImpl : PushService() {
                 }
             }
             withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { senderReq.join(); chReq.join() }
-            val senderId = if (senderReq.isCompleted) senderReq.await() else null.also { senderReq.cancel() }
+            val msg = if (senderReq.isCompleted) senderReq.await() else null.also { senderReq.cancel() }
+            val senderId = msg?.userId
             val chName = if (chReq.isCompleted) chReq.await() else null.also { chReq.cancel() }
             Notifier.post(
                 ctx,
-                InAppNotice(p.title, g.store.plainText(p.body), chId, p.data?.messageId, sender = sender, senderId = senderId, channelName = chName),
+                InAppNotice(p.title, g.store.plainText(p.body), chId, p.data?.messageId, sender = sender, senderId = senderId, channelName = chName, createdAt = msg?.createdAt),
                 tag = p.data?.messageId ?: p.tag,
             )
         }

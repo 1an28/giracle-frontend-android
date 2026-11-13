@@ -33,6 +33,8 @@ data class ClientSettings(
     val shrinkImages: Boolean = true,
     /** 文字サイズの倍率 */
     val fontScale: Float = 1f,
+    /** 壁紙から作った色 (Material You。Android 12 以降) を使う。既定は Web 版に近い白黒基調 */
+    val dynamicColor: Boolean = false,
 )
 
 /**
