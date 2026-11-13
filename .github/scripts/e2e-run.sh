@@ -25,6 +25,8 @@ set -e
 "$ADB" install -r "$APP_APK"
 "$ADB" install -r -t "$TEST_APK"
 "$ADB" shell pm list instrumentation
+# 1 回目の通しの確認は記録が多く、既定の大きさでは前半の結果の印 (ux net=fast) が押し出されて消えた (#73 の 6f708de、API 37)。大きくする
+"$ADB" logcat -G 16M || true
 "$ADB" logcat -c || true
 set +e
 
