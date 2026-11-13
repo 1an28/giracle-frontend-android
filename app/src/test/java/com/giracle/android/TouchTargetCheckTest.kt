@@ -95,4 +95,18 @@ class TouchTargetCheckTest {
         }
         assertEquals(listOf("onLayer: 60x28dp (under と近い)"), rule.smallTouchTargets(rule.density))
     }
+
+    /** スクロールする一覧は面として扱わない。一覧の上に重なるボタン (「最新へ」など) との取り合いを数える */
+    @Test fun listIsNotAShield() {
+        rule.setContent {
+            Box(Modifier.size(400.dp, 300.dp)) {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    item { Box(Modifier.padding(top = 100.dp, start = 170.dp).size(60.dp, 28.dp).clickable { }.testTag("chip")) }
+                }
+                // chip の 4dp 下から始まる、一覧の外の押せる要素
+                Box(Modifier.padding(top = 132.dp, start = 170.dp).size(60.dp, 40.dp).clickable { }.testTag("fab"))
+            }
+        }
+        assertEquals(listOf("chip: 60x28dp (fab と近い)"), rule.smallTouchTargets(rule.density))
+    }
 }

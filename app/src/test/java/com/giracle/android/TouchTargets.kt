@@ -64,7 +64,9 @@ fun SemanticsNodeInteractionsProvider.smallTouchTargets(density: Density, minDp:
             val shields = ancestors(n).filter { a ->
                 @Suppress("DEPRECATION")
                 val group = a.config.getOrNull(SemanticsProperties.IsTraversalGroup) == true || a.config.getOrNull(SemanticsProperties.IsContainer) == true
-                group && a.boundsInRoot.contains(expanded)
+                // スクロールする一覧 (LazyColumn) にも isTraversalGroup が付くが、指を通さない面ではない (上に重なるボタンが指を取る)
+                val scrolls = a.config.getOrNull(SemanticsActions.ScrollBy) != null
+                group && !scrolls && a.boundsInRoot.contains(expanded)
             }.toList()
             val clash = pressable.firstOrNull { o ->
                 o.id != n.id && !related(n, o) && !o.boundsInRoot.isEmpty && o.boundsInRoot.overlaps(expanded) &&
