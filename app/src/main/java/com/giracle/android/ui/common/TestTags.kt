@@ -66,6 +66,10 @@ object TestTags {
     const val EMOJI_PICKER = "emoji_picker"
     const val EMOJI_PICKER_SEARCH = "emoji_picker.search"
     fun emojiPickerItem(emojiCode: String) = "emoji_picker.item:$emojiCode"
+
+    // プロフィール (管理者の操作。#43)
+    const val PROFILE_DELETE_USER = "profile.delete_user"
+    const val PROFILE_DELETE_USER_CONFIRM = "profile.delete_user_confirm"
 }
 
 /**

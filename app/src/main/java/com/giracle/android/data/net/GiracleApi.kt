@@ -154,6 +154,8 @@ class GiracleApi(private val client: OkHttpClient, @Volatile var endpoint: Endpo
     suspend fun deleteSession(sessionId: Int) = callUnit("DELETE", "user/session", obj("sessionId" to sessionId))
     suspend fun ban(userId: String) = callUnit("POST", "user/ban", obj("userId" to userId))
     suspend fun unban(userId: String) = callUnit("POST", "user/unban", obj("userId" to userId))
+    /** ユーザーの削除 (論理削除。メッセージは残り、セッション・通知・その人の Bot は消える)。manageUser 権限。#43 */
+    suspend fun deleteUser(userId: String) = callUnit("DELETE", "user", obj("userId" to userId))
 
     /** 管理者 (manageServer) が、自分より下のロールのユーザーのパスワードを作り直す。新しいパスワードを返す */
     suspend fun resetPassword(userId: String): String =

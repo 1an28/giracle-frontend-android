@@ -13,6 +13,7 @@ import androidx.test.uiautomator.Until
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +27,9 @@ import java.util.regex.Pattern
  *   appPackage  確かめるアプリ (既定 io.github.u1an28.giracle.kotlin)
  *   server      端末から見たサーバー (既定 http://localhost:3333。CI は adb reverse で手元のサーバーにつなぐ)
  *   adminUser / adminPass  サーバーの管理者 (既定 admin / password123)
+ *   lanServer   端末から LAN のアドレスで見たサーバー (CI は http://10.0.2.2:3333)。無ければ、それを使う確認を飛ばす。
+ *               adb reverse の localhost は端末の通信網を通らないので、電波を切る確認 (#37) と
+ *               Android 17 のローカルネットワーク権限の確認 (#42) はこちらを使う
  *
  * 1 つの流れにしてあるのは、ログイン → チャンネル → 背面 → 設定 と、前の段階の状態を引き継ぐため。
  * 各段階の画面を [shots] に保存する (CI が取り出して成果物にする)。
@@ -37,6 +41,7 @@ class ReleaseAppTest {
     private val device = UiDevice.getInstance(instr)
     private val pkg = args.getString("appPackage") ?: "io.github.u1an28.giracle.kotlin"
     private val server = args.getString("server") ?: "http://localhost:3333"
+    private val lanServer = args.getString("lanServer")
     private val adminUser = args.getString("adminUser") ?: "admin"
     private val adminPass = args.getString("adminPass") ?: "password123"
     private val shots = File(instr.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
@@ -48,6 +53,8 @@ class ReleaseAppTest {
     private var step = 0
 
     @Before fun setUp() {
+        // 前のテストが通知欄を開いたまま失敗しても、次のテストの画面を覆わないよう閉じる (巻き添えの失敗を防ぐ)
+        runCatching { shell("cmd statusbar collapse"); device.pressHome() }
         // 管理者で招待コードを作り、相手役 (bob) を登録する。確認用のチャンネルを作り、2 人とも参加する
         admin.signIn(adminUser, adminPass)
         val invite = "e2e$suffix"
@@ -234,9 +241,77 @@ class ReleaseAppTest {
         if (pn == null) {
             // 手がかり: アプリの通知の一覧と、アプリのプロセスがあるか
             Log.w(TAG, "notifications:\n" + shell("dumpsys notification --noredact").lines().filter { pkg in it || "android.title" in it || "android.text" in it }.take(40).joinToString("\n"))
+            device.pressBack()
             fail("プッシュ通知が届かない (プロセスを終わらせた: $killed、今のプロセス: ${shell("pidof $pkg").trim()})")
         }
         device.pressBack()
+    }
+
+    /**
+     * LAN のアドレスのサーバーにつなぐ (#42、#37)。
+     * 1. Android 17 以上: ローカルネットワークの権限を求められ、拒否すると理由が出る。許可するとつながる
+     * 2. 電波を切って送ったメッセージが「送信待ち」になり、電波が戻ると 1 件だけ届く (#37、D-029)
+     */
+    @Test fun lanServerPermissionAndOfflineSend() {
+        assumeTrue("lanServer の指定が無い", lanServer != null)
+        val lan = lanServer!!
+        shell("pm clear $pkg")
+        launch()
+        wait(res("login.server_url"), 30_000, "ログイン画面").text = lan
+        wait(res("login.connect"), 5_000, "接続ボタン").click()
+        if (android.os.Build.VERSION.SDK_INT >= 37) {
+            // 1 回目は拒否する: 理由と設定を開くボタンが出る
+            val deny = device.wait(Until.findObject(By.res(Pattern.compile(".*:id/permission_deny_button"))), 20_000)
+            shot("lan_permission")
+            if (deny == null) fail("LAN のサーバーなのに、ローカルネットワークの権限の確認画面が出ない (Android 17)")
+            deny!!.click()
+            wait(By.textContains("付近のデバイス"), 10_000, "権限が無いときの理由の表示")
+            shot("lan_denied")
+            // 設定で許可したのと同じ状態にして、つなぎ直す
+            shell("pm grant $pkg android.permission.ACCESS_LOCAL_NETWORK")
+            wait(res("login.connect"), 5_000, "接続ボタン (2 回目)").click()
+        }
+        wait(res("login.username"), 30_000, "LAN のサーバーの情報の取得 (login.username)").text = adminUser
+        wait(res("login.password"), 5_000, "パスワード欄").text = adminPass
+        hideKeyboard()
+        wait(res("login.submit"), 5_000, "ログインボタン").click()
+        device.wait(Until.findObject(By.res(Pattern.compile(".*:id/permission_allow_button"))), 15_000)?.click()
+        wait(res("screen.home"), 20_000, "ホーム画面 (LAN のサーバー)")
+        findScrolling(res("home.channel:$channelId"), "確認用チャンネル").click()
+        wait(res("screen.channel"), 10_000, "チャンネル画面")
+        // WebSocket がつながったことを、相手の送信の受信で確かめる (Origin が CORS_ORIGIN に入っていること)
+        val hello = "LAN 受信 $suffix"
+        bob.send(channelId, hello)
+        wait(By.textContains(hello), 20_000, "LAN のサーバーからの受信 (WebSocket)")
+        shot("lan_connected")
+
+        // 2. 電波を切って送る (#37)
+        val offline = "電波なし送信 $suffix"
+        shell("cmd connectivity airplane-mode enable")
+        try {
+            SystemClock.sleep(3_000)
+            wait(res("composer.input"), 10_000, "入力欄").apply { click(); text = offline }
+            wait(res("composer.send"), 5_000, "送信ボタン").click()
+            wait(res("composer.outbox"), 30_000, "送信待ちの表示 (composer.outbox)")
+            shot("outbox")
+            assertTrue("電波が無いのにサーバーに届いている", admin.recentTexts(channelId).none { it == offline })
+        } finally {
+            shell("cmd connectivity airplane-mode disable")
+        }
+        // 3. 電波が戻ると、送信待ちが消えて 1 件だけ届く
+        val restoredAt = SystemClock.uptimeMillis()
+        if (!device.wait(Until.gone(res("composer.outbox")), 90_000)) { shot("outbox_stuck"); fail("電波が戻っても送信待ちが消えない") }
+        waitFor("電波が戻った後、サーバーに届く", 30_000) { admin.recentTexts(channelId).contains(offline) }
+        // 電波を戻してから届くまでの時間 (D-034 の効果を見るため)
+        Log.i(TAG, "E2E-RESULT outbox_delivered_ms=${SystemClock.uptimeMillis() - restoredAt}")
+        SystemClock.sleep(3_000)
+        val count = admin.recentTexts(channelId).count { it == offline }
+        assertTrue("送信待ちのメッセージが $count 件届いた (1 件のはず)", count == 1)
+        wait(By.textContains(offline), 15_000, "送信待ちだったメッセージの表示")
+        shot("outbox_sent")
+        assertAlive("送信待ちを送った後")
+        // e2e-run.sh が、飛ばされずに最後まで動いたことをこの印で確かめる
+        Log.i(TAG, "E2E-RESULT lan_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
     }
 
     /** 共有するファイル (64x64 の PNG と、短い文書) をキャッシュの share/ に作る */

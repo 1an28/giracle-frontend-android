@@ -2,12 +2,15 @@
 # CI 用: 起動済みのエミュレータに配布版 APK と確認用 APK (:e2e) を入れ、通しの確認 (#12) を動かす。
 # 前提: emulator-start.sh で起動済み、localhost:3333 にサーバー (local-server)、APK はビルド済み。
 #   APP_APK : 確かめる APK (既定: assembleRelease の出力)
+#   LAN_SERVER : 端末から LAN のアドレスで見たサーバー (既定 http://10.0.2.2:3333 = エミュレータから見たランナー)。
+#                電波を切る確認 (#37) とローカルネットワーク権限の確認 (#42) に使う。空にすると飛ばす
 # 結果は e2e-out/ (画面・logcat・crash バッファ) に置く。
 set -uo pipefail
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
 ADB="$SDK/platform-tools/adb"
 AAPT2=$(ls -d "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
 APP_APK=${APP_APK:-app/build/outputs/apk/release/app-release.apk}
+LAN_SERVER=${LAN_SERVER-http://10.0.2.2:3333}
 TEST_APK=$(ls e2e/build/outputs/apk/debug/*.apk | head -1)
 APP_PKG=$("$AAPT2" dump packagename "$APP_APK")
 TEST_PKG=$("$AAPT2" dump packagename "$TEST_APK")
@@ -26,7 +29,9 @@ set -e
 set +e
 
 t0=$(date +%s)
-"$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 \
+LAN_ARGS=()
+[ -n "$LAN_SERVER" ] && LAN_ARGS=(-e lanServer "$LAN_SERVER")
+"$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 "${LAN_ARGS[@]}" \
   "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
 echo "e2e: $(( $(date +%s) - t0 ))s"
 
@@ -60,6 +65,12 @@ show_clues() {
 }
 # am instrument は失敗しても終了コードが 0 なので、出力で判断する
 grep -q '^OK (' "$OUT/instrument.txt" || { echo "::error::配布版の確認 (e2e) が失敗した。成果物 e2e の instrument.txt と画面を見る"; status=1; }
+# 条件付きの確認 (assume) は、飛ばされても「OK」になる。指定したのに動いていなければ失敗にする
+echo "::group::e2e の結果の印"; grep -o "E2E-RESULT .*" "$OUT/logcat.txt"; echo "::endgroup::"
+if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT lan_test=done" "$OUT/logcat.txt"; then
+  echo "::error::LAN のサーバーでの確認 (lanServerPermissionAndOfflineSend) が最後まで動いていない (飛ばされた?)"
+  status=1
+fi
 [ $status = 0 ] || show_clues
 if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"

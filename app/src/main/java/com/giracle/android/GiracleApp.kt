@@ -14,6 +14,7 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.giracle.android.data.Emojis
 import com.giracle.android.notify.Notifier
+import kotlinx.coroutines.launch
 
 class GiracleApp : Application(), SingletonImageLoader.Factory {
     lateinit var graph: AppGraph
@@ -25,6 +26,19 @@ class GiracleApp : Application(), SingletonImageLoader.Factory {
         // 絵文字表は裏で読む (最初のリアクション表示までに間に合えばよい)
         Emojis.preload(this, graph.scope)
         Notifier.init(this, graph)
+
+        // 回線がつながった (機内モードの解除・Wi-Fi への切り替えなど) ら、再接続の待ち時間 (最大 30 秒) を待たずにつなぎ直す。
+        // つながると送信待ち (D-029) と電波待ちの添付 (D-030) が送られる
+        runCatching {
+            getSystemService(android.net.ConnectivityManager::class.java)?.registerDefaultNetworkCallback(
+                object : android.net.ConnectivityManager.NetworkCallback() {
+                    // 呼ばれるのは回線管理のスレッドなので、前面・背面の切り替えと同じメインスレッドで扱う
+                    override fun onAvailable(network: android.net.Network) {
+                        graph.scope.launch(kotlinx.coroutines.Dispatchers.Main) { graph.ws.nudge() }
+                    }
+                },
+            )
+        }
 
         // 前面・背面の切り替えで WebSocket を管理する
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {

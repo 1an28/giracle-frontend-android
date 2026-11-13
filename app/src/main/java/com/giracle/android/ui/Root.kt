@@ -91,7 +91,10 @@ fun Root(graph: AppGraph, pendingOpen: MutableState<Pair<String, String?>?>) {
 
 @Composable
 private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: MutableState<Pair<String, String?>?>) {
-    val nav = remember { Navigator() }
+    // 画面の履歴は、プロセスが終わって戻ったときにも戻す (D-032)
+    val nav = rememberSaveable(saver = NavigatorCodec.saver) { Navigator() }
+    // 履歴を戻したときは、前回のチャンネルを開き直さない
+    val restoredNav = remember { nav.stack.size > 1 }
     val ctx = LocalContext.current
     val store = LocalStore.current
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
@@ -101,7 +104,17 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     // 権限の答えが出たら、プッシュ通知の自動登録を試し直す (D-019)
     var permAnswered by remember { mutableStateOf(0) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permAnswered++ }
+    // LAN 内のサーバーなら、Android 17 のローカルネットワーク権限を先に求める (#42、D-031)。
+    // 前の版から更新した人は、ここで初めて尋ねられる。許可されたら、失敗していた読み込みをやり直す
+    val gate = com.giracle.android.ui.common.rememberLocalNetworkGate()
+    var localAsked by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
+        val ok = gate.ensure(graph.endpoint.origin.host)
+        localAsked = true
+        if (ok) (graph.phase.value as? AppPhase.SignedIn)?.takeIf { it.error != null }?.let { graph.retryLoad() }
+    }
+    LaunchedEffect(localAsked) {
+        if (!localAsked) return@LaunchedEffect
         if (!asked && Build.VERSION.SDK_INT >= 33) {
             asked = true
             permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -119,6 +132,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     LaunchedEffect(Unit) {
         // 共有から開かれたときは、送り先を選んでもらうためホームのままにする
         if (PendingShare.content != null) return@LaunchedEffect
+        if (restoredNav) return@LaunchedEffect
         graph.prefs.lastChannelId?.let { if (pendingOpen.value == null) nav.openChannel(it) }
     }
     // 共有を受け取ったら、送り先のチャンネルを選べるようホームに戻る (D-020)
@@ -145,6 +159,12 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
             } else {
                 val screen = nav.current
                 androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                    // チャンネルの画面は、1 ペインと 2 ペインで描く場所が変わる。回転や折りたたみの開閉で切り替わっても
+                    // 作り直さず、スクロール位置などの状態ごと移すため、movableContentOf で包む (#39、D-032)
+                    val channelKey = (screen as? Screen.Channel)?.channelId
+                    val channelContent = remember(channelKey) {
+                        androidx.compose.runtime.movableContentOf { ch: String, msg: String? -> ChannelScreen(ch, msg) }
+                    }
                     // 幅の広い画面 (タブレット・折りたたみ・横画面) では、ホームとチャンネルを左右に並べる (#29、D-028)
                     val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH && (screen is Screen.Home || screen is Screen.Channel)
                     if (twoPane) {
@@ -158,7 +178,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
                                     androidx.compose.runtime.key(screen.stableKey()) {
                                         // 1 行が長くなりすぎないよう、読みやすい幅に抑える
                                         Box(Modifier.widthIn(max = CHANNEL_MAX_WIDTH).fillMaxSize().testTag(TestTags.SCREEN_CHANNEL)) {
-                                            ChannelScreen(screen.channelId, screen.messageId)
+                                            channelContent(screen.channelId, screen.messageId)
                                         }
                                     }
                                 } else {
@@ -176,7 +196,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
                             Box(Modifier.fillMaxSize().testTag(screen.testTag())) {
                                 when (screen) {
                                     Screen.Home -> HomeScreen(loading = !p.ready)
-                                    is Screen.Channel -> ChannelScreen(screen.channelId, screen.messageId)
+                                    is Screen.Channel -> channelContent(screen.channelId, screen.messageId)
                                     is Screen.ChannelSettings -> ChannelSettingsScreen(screen.channelId)
                                     Screen.Inbox -> InboxScreen()
                                     is Screen.Search -> SearchScreen(screen.channelId, screen.userId)
@@ -224,6 +244,13 @@ private fun LoadError(error: String, onRetry: () -> Unit) {
         Text("サーバーから読み込めませんでした", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val ctx = LocalContext.current
+        if (!com.giracle.android.data.net.LocalNetwork.granted(ctx) && com.giracle.android.data.net.LocalNetwork.looksLocal(graph.endpoint.origin.host)) {
+            // LAN 内のサーバーで権限が無いと、タイムアウトとしか出ないため、理由の候補を出す (#42)
+            Spacer(Modifier.height(8.dp))
+            Text(com.giracle.android.data.net.LocalNetwork.DENIED_MESSAGE, style = MaterialTheme.typography.bodySmall)
+            androidx.compose.material3.TextButton(onClick = { com.giracle.android.ui.common.openAppSettings(ctx) }) { Text("アプリの設定を開く") }
+        }
         Spacer(Modifier.height(16.dp))
         Button(onClick = onRetry) { Text("再試行") }
         Spacer(Modifier.height(8.dp))
