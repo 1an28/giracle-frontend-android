@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -150,6 +151,8 @@ fun Composer(
     onCancelReply: () -> Unit,
     editing: Message?,
     onCancelEdit: () -> Unit,
+    /** 送れた (サーバーが受け取った) メッセージの ID を知らせる。画面がそこまで送る (#58) */
+    onSent: (String) -> Unit = {},
 ) {
     val graph = LocalGraph.current
     val store = LocalStore.current
@@ -163,6 +166,8 @@ fun Composer(
     val state = remember(channelId) { TextFieldState(Drafts.get(ctx, channelId)) }
     val attachments = remember(channelId) { mutableStateListOf<Attachment>() }
     var sending by remember { mutableStateOf(false) }
+    // 送信はアプリの scope で続くので、終わったときに最新の知らせ先を呼ぶ
+    val latestOnSent by rememberUpdatedState(onSent)
 
     // 編集モードに入ったら本文を差し替える
     LaunchedEffect(editing?.id) {
@@ -309,8 +314,9 @@ fun Composer(
         val sessionStore = graph.store
         graph.scope.launch(Dispatchers.Main.immediate) {
             try {
-                store.send(channelId, body, ids, reply)
+                val sent = store.send(channelId, body, ids, reply)
                 if (graph.store !== sessionStore) return@launch
+                latestOnSent(sent.id)
                 // 共有シート・ランチャーに、このチャンネルを直接の送り先として出す (#25)
                 com.giracle.android.ui.ChannelShortcuts.reportSent(appCtx, channelId, store.channels.value.firstOrNull { it.id == channelId }?.name)
                 Drafts.remove(appCtx, channelId)
