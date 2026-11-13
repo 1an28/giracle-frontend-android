@@ -143,7 +143,9 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         try {
             store.openChannel(channelId)
         } catch (e: Exception) {
-            error = e.userMessage()
+            // キャッシュを出しているときは画面の中央に案内が出ないので、取り直せなかったことを知らせる (D-047)
+            if (store.history(channelId).value.loaded) ctx.toast("最新のメッセージを取得できませんでした: ${e.userMessage()}")
+            else error = e.userMessage()
         }
     }
     DisposableEffect(channelId) { onDispose { store.leaveChannel(channelId) } }
@@ -184,10 +186,14 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     LaunchedEffect(jumpTo) { if (jumpTo != null) jump(jumpTo) }
 
     // ---- 初回表示位置: 新着線の少し下 (未読の始まりが見えるように) ----
+    // キャッシュ (切れていた間の投稿が無い) では未読の始まりが分からないので、取り直した後に合わせる (D-047)。
+    // キャッシュを見ている間に利用者がスクロールしていたら、その位置を優先して動かさない
     var positioned by remember(channelId) { mutableStateOf(jumpTo != null) }
-    LaunchedEffect(history.loaded) {
-        if (!history.loaded || positioned) return@LaunchedEffect
+    val ready = history.loaded && !history.fromCache
+    LaunchedEffect(ready) {
+        if (!ready || positioned) return@LaunchedEffect
         positioned = true
+        if (listState.firstVisibleItemIndex > 0) return@LaunchedEffect
         val before = readBefore[channelId]
         if (before.isNullOrEmpty()) return@LaunchedEffect
         val firstUnread = history.messages.indexOfLast { ChatStore.isAfter(it.createdAt, before) }
