@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
@@ -351,6 +352,9 @@ class ReleaseAppTest {
             shot("ux_inbox")
 
             // 探す: ホーム → 検索 → 語を入れて検索 → 結果を開くと、そのメッセージが見える
+            // 通知の一覧から開いたチャンネルは、通知の一覧の上に積まれるので、戻るは 2 回
+            device.pressBack()
+            wait(res("screen.inbox"), 10_000, "通知の一覧に戻る")
             device.pressBack()
             wait(res("screen.home"), 10_000, "ホーム画面")
             UxTask("search").run {
@@ -393,15 +397,26 @@ class ReleaseAppTest {
         /** 終わりの状態の要素が出るまでの時間を測る。[required] でなければ、出なくても失敗にせず shown=false と記録する */
         fun done(sel: BySelector, timeoutMs: Long = 20_000, required: Boolean = true) = measure(name, sel, timeoutMs, required)
 
-        // UiDevice.wait は問い合わせの間隔が粗いので、自分で短い間隔で探す
+        // UiDevice.wait は問い合わせの間隔が粗いので、自分で短い間隔で探す。
+        // findObject は既定で、画面が 500ms 落ち着くのを待ってから探す。それを測る時間に含めないよう、測る間だけ待たない
         private fun measure(label: String, sel: BySelector, timeoutMs: Long, required: Boolean) {
-            val end = last + timeoutMs
-            while (SystemClock.uptimeMillis() < end) {
-                if (device.findObject(sel) != null) {
-                    Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
-                    return
+            val conf = Configurator.getInstance()
+            val idle = conf.waitForIdleTimeout
+            conf.waitForIdleTimeout = 0
+            val found = try {
+                val end = last + timeoutMs
+                var hit = false
+                while (!hit && SystemClock.uptimeMillis() < end) {
+                    hit = device.findObject(sel) != null
+                    if (!hit) SystemClock.sleep(30)
                 }
-                SystemClock.sleep(30)
+                hit
+            } finally {
+                conf.waitForIdleTimeout = idle
+            }
+            if (found) {
+                Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=${SystemClock.uptimeMillis() - last}")
+                return
             }
             Log.i(TAG, "E2E-RESULT ux task=$label taps=$taps ms=-1 shown=false")
             if (required) {
