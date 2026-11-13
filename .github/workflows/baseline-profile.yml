@@ -1,7 +1,7 @@
 name: baseline-profile
 
 # Baseline Profile をエミュレータで記録し、起動時間を「記録前 (ワイルドカード規則) / 記録後 / 事前コンパイルなし」で比べる (#8、D-021)。
-# 記録後の APK で、チャンネルのスクロールのフレーム時間も測る (D-046)。
+# 記録後の APK で、チャンネルのスクロールのフレーム時間も測る (D-048)。
 # 記録したものは成果物 baseline-profile に残す。配布版への取り込みは release.yml が行う (main の同じコミットの記録を使う)。
 on:
   # main に入ったら記録しておく。リリースは同じコミットの記録があればそれを使い、記録し直さない (#31)
@@ -61,7 +61,7 @@ jobs:
       - name: Measure startup (after)
         timeout-minutes: 15
         run: .github/scripts/baseline-profile.sh measure apks/after.apk after
-      # チャンネルのスクロールのフレーム時間 (D-046)。実機の値ではないので、前の実行との比較に使う
+      # チャンネルのスクロールのフレーム時間 (D-048)。実機の値ではないので、前の実行との比較に使う
       - name: Measure scroll (after)
         timeout-minutes: 15
         run: .github/scripts/baseline-profile.sh scroll apks/after.apk scroll

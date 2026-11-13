@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
  * - none: 事前コンパイルなし (Baseline Profile が無い場合に近い)
  * - baselineProfile: APK に同梱した Baseline Profile で事前コンパイル (インストール直後の利用者と同じ)
  * エミュレータの値なので絶対値は実機と違う。同じ実行の中での比較に使う。
- * Firebase Test Lab の実機 (device-benchmark.yml、D-046) でも動かす。そちらは絶対値として読めるが、
+ * Firebase Test Lab の実機 (device-benchmark.yml、D-048) でも動かす。そちらは絶対値として読めるが、
  * サーバーに届かないためログインせず、最初の画面 (ログイン画面) までを測る (引数 login=false)。
  */
 @RunWith(AndroidJUnit4::class)

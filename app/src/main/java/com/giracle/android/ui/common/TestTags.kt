@@ -44,6 +44,13 @@ object TestTags {
     fun homeChannel(channelId: String) = "home.channel:$channelId"
     fun homeChannelDrag(channelId: String) = "home.channel_drag:$channelId"
     const val HOME_REORDER = "home.reorder"
+    const val HOME_SEARCH = "home.search"
+
+    // 通知 (受信箱) と検索
+    fun inboxItem(messageId: String) = "inbox.item:$messageId"
+    const val SEARCH_INPUT = "search.input"
+    const val SEARCH_SUBMIT = "search.submit"
+    fun searchResult(messageId: String) = "search.result:$messageId"
 
     // チャンネル
     const val CHANNEL_MESSAGES = "channel.messages"

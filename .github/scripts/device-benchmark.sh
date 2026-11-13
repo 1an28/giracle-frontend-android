@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI 用: Firebase Test Lab の実機で起動時間を測り、結果をログに出す (D-046)。
+# CI 用: Firebase Test Lab の実機で起動時間を測り、結果をログに出す (D-048)。
 # 前提: gcloud は認証済み (サービスアカウント)、APK はビルド済み。DEVICE が空なら端末を自動で選ぶ。
 # サーバーには届かないので、ログインせずに最初の画面 (ログイン画面) までを測る (login=false)。
 set -euo pipefail

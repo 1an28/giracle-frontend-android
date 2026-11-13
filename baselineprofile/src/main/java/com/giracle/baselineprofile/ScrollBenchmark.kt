@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * チャンネルの履歴をスクロールしたときのフレーム時間を測る (UI_PRINCIPLES.md 8 章、D-046)。
+ * チャンネルの履歴をスクロールしたときのフレーム時間を測る (UI_PRINCIPLES.md 8 章、D-048)。
  * 今はエミュレータ (baseline-profile.yml) で、前の実行と比べるために動かす (suppressErrors=EMULATOR を付けたときだけ動く)。
  * Firebase Test Lab の実機 (device-benchmark.yml) では、端末からサーバーへ届ける方法が決まるまで動かせない (ROADMAP)。
  * コンパイルは利用者と同じ (APK に同梱した Baseline Profile を使う既定の状態)。

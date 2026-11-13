@@ -1,6 +1,6 @@
 name: device-benchmark
 
-# Firebase Test Lab の実機で、配布版 (R8 適用後) の起動時間を測る (D-046)。
+# Firebase Test Lab の実機で、配布版 (R8 適用後) の起動時間を測る (D-048)。
 # 無料の枠 (Spark: 実機は 1 日 5 回) を守るため、手動と 1 日 1 回だけ走らせる。push のたびには回さない。
 # Secrets の FIREBASE_SA_KEY (サービスアカウントの鍵) が無ければ、何もせずに成功で終わる。準備は docs/ROADMAP.md。
 # Test Lab の端末はランナーのサーバーに届かないので、今はログイン前 (最初の画面) までの起動だけを測る。

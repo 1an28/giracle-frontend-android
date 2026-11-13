@@ -134,7 +134,7 @@ fun HomeScreen(loading: Boolean) {
                     if (hasNew.any { it.value }) {
                         IconButton(onClick = { confirmReadAll = true }, modifier = Modifier.testTag(TestTags.HOME_READ_ALL)) { Icon(AppIcons.DoneAll, "すべて既読にする") }
                     }
-                    IconButton(onClick = { nav.push(Screen.Search()) }) { Icon(Icons.Default.Search, "検索") }
+                    IconButton(onClick = { nav.push(Screen.Search()) }, modifier = Modifier.testTag(TestTags.HOME_SEARCH)) { Icon(Icons.Default.Search, "検索") }
                     IconButton(onClick = { nav.push(Screen.Settings) }, modifier = Modifier.testTag(TestTags.HOME_SETTINGS).clearAndSetSemantics { contentDescription = "設定"; role = Role.Button }) {
                         me?.let { Avatar(it.id, size = 30.dp) } ?: Icon(Icons.Default.Settings, "設定")
                     }

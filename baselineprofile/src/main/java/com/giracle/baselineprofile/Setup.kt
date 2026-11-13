@@ -55,7 +55,7 @@ internal object Setup {
     /**
      * アプリを起動してログイン済みにする。データの無い端末で、起動時間の計測の前に使う。ログイン済みなら何もしない。
      * 起動したアプリはそのまま (計測が毎回止めて起動し直す)。
-     * 引数 login=false のときは何もしない (サーバーに届かない Firebase Test Lab の実機で、ログイン画面までの起動を測る。D-046)。
+     * 引数 login=false のときは何もしない (サーバーに届かない Firebase Test Lab の実機で、ログイン画面までの起動を測る。D-048)。
      */
     fun ensureLoggedIn() {
         if (args.getString("login") == "false") return

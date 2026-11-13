@@ -84,7 +84,7 @@ CI (`baseline-profile.yml`。main への push・`baselineprofile/` を変えた 
    ログイン → ホーム → チャンネルを開いてスクロール → 設定、を繰り返して使われたコードを記録する
 2. 記録を `app/src/main/baseline-prof.txt` に置き、配布版を作り直す (R8 がクラス名を合わせて取り込む)
 3. `StartupBenchmark` で、記録前・記録後の配布版の起動時間 (コールドスタート) を測り、ログに出す
-4. `ScrollBenchmark` で、記録後の配布版のチャンネルのスクロールのフレーム時間を測り、ログに出す (D-046)
+4. `ScrollBenchmark` で、記録後の配布版のチャンネルのスクロールのフレーム時間を測り、ログに出す (D-048)
 
 ```bash
 ./gradlew :app:assembleNonMinifiedRelease :baselineprofile:assembleDebug
@@ -94,7 +94,7 @@ CI (`baseline-profile.yml`。main への push・`baselineprofile/` を変えた 
 .github/scripts/baseline-profile.sh scroll app/build/outputs/apk/release/app-release.apk scroll
 ```
 
-## 実機での計測 (Firebase Test Lab、D-046)
+## 実機での計測 (Firebase Test Lab、D-048)
 
 `device-benchmark.yml` (手動と 1 日 1 回) が、Firebase Test Lab の実機で配布版の起動時間を測り、ログと実行の要約に出す。
 Secrets の `FIREBASE_SA_KEY` が無ければ何もしない (準備は docs/ROADMAP.md の持ち主の欄)。

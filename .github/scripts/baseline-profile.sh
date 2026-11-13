@@ -3,7 +3,7 @@
 # 前提: emulator-start.sh で起動済み、localhost:3333 にサーバー (local-server)、APK はビルド済み。
 #   baseline-profile.sh generate <app.apk>   記録して app/src/main/baseline-prof.txt を置き換える
 #   baseline-profile.sh measure  <app.apk> <名前>   起動時間を測ってログに出す (ログイン済みの状態で使う)
-#   baseline-profile.sh scroll   <app.apk> <名前>   チャンネルのスクロールのフレーム時間を測ってログに出す (D-046)
+#   baseline-profile.sh scroll   <app.apk> <名前>   チャンネルのスクロールのフレーム時間を測ってログに出す (D-048)
 # 出力は bp-out/。
 set -uo pipefail
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
