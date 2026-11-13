@@ -32,7 +32,7 @@ import java.util.regex.Pattern
  *               adb reverse の localhost は端末の通信網を通らないので、電波を切る確認 (#37) と
  *               Android 17 のローカルネットワーク権限の確認 (#42) はこちらを使う
  *   uxServer / uxNet  よく使う作業の測定 (uxTasks) でアプリがつなぐサーバーと、ログに付ける回線の名前
- *               (既定 server / fast。e2e-run.sh が遅い回線 (slow) でも測る。D-046)
+ *               (既定 server / fast。e2e-run.sh が遅延の中継を通した遅い回線 (slow) でも測る。D-046)
  *
  * 1 つの流れにしてあるのは、ログイン → チャンネル → 背面 → 設定 と、前の段階の状態を引き継ぐため。
  * 各段階の画面を [shots] に保存する (CI が取り出して成果物にする)。
@@ -248,7 +248,7 @@ class ReleaseAppTest {
     private fun freshLogin(url: String = server) {
         shell("pm clear $pkg")
         // LAN のアドレスのサーバーは、Android 17 以上ではローカルネットワークの権限が要る (#42)。確認画面は別のテストで確かめるので、先に許可しておく
-        if (url != server && android.os.Build.VERSION.SDK_INT >= 37) shell("pm grant $pkg android.permission.ACCESS_LOCAL_NETWORK")
+        if ("localhost" !in url && android.os.Build.VERSION.SDK_INT >= 37) shell("pm grant $pkg android.permission.ACCESS_LOCAL_NETWORK")
         launch()
         val field = wait(res("login.server_url"), 30_000, "ログイン画面")
         shot("launch")
@@ -389,11 +389,10 @@ class ReleaseAppTest {
     }
 
     /**
-     * 端末から [uxServer] への往復時間を 5 回測ってログに出す。遅い回線 (エミュレータの遅延) が
+     * 端末から [uxServer] への往復時間を 5 回測ってログに出す。遅い回線 (e2e-run.sh の遅延の中継) が
      * 実際に効いているかを、作業の時間とは別に確かめるため (#57)。新しい接続を毎回張る
      */
     private fun logRoundTrip() {
-        if (uxServer != server && android.os.Build.VERSION.SDK_INT >= 37) shell("pm grant ${instr.context.packageName} android.permission.ACCESS_LOCAL_NETWORK")
         val ms = (1..5).map {
             val t = SystemClock.uptimeMillis()
             runCatching {

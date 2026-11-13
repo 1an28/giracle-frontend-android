@@ -2,8 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- テストの準備 (ユーザー・チャンネルの作成、相手側の送信) をサーバーの API で直接行う -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 遅い回線の測定で、端末から LAN のアドレスのサーバーへの往復時間を測る (Android 17 以上で要る。#57) -->
-    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <application android:usesCleartextTraffic="true">
         <!-- 「他のアプリからの共有」を真似て、テストが作ったファイルを渡す (#4) -->
         <provider
