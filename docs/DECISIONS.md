@@ -649,7 +649,7 @@
   Element X・Signal のコード、Slack 2020・Discord 2023・Telegram 2026 の刷新とその反応、
   Telegram・WhatsApp の低評価レビュー (160 件を読んで分類。配置への不満は少なく、「つながらず読めない」が多い)。
   多くは開発環境から原文を開けず、検索の要約で読んだ (UI_PRINCIPLES.md に「(要約)」と印を付けた)。
-  2026-11-14 に原文を開き直し (#69)、違っていた 4 か所 (Discord のタブ・Hoober の「端 9mm」と 2017 年の書き直し・Nielsen への批判の中身) を直した。
+  2026-11-14 に原文を開き直し (#69)、違っていた 3 か所 (Discord のタブ・Hoober の「端 9mm」・Nielsen への批判の中身) と、Apple の 44pt (最小ではなく既定) を直した。
   Viget・VentureBeat・Discord の掲示板は今も開けず、「(要約)」のまま。
 - **CI で確かめる仕組み**: Compose の `enableAccessibilityChecks()` (Accessibility Test Framework) を Robolectric で試したが、
   働かなかった。ATF が作る画面の構造に Compose の中身が入らない (`ComposeView` の下に 0×0 の要素が 1 つだけ。

@@ -47,8 +47,8 @@ Web 版・Flutter 版をなぞる前提を捨て、チャットクライアン�
 | 押せる範囲 | 48dp × 48dp 以上 | Android 公式「Make apps more accessible」(本文を確かめた) |
 | 片手の親指で押せる大きさ | 単発の操作 9.2mm、続けて押す操作 9.6mm | Parhi, Karlson, Bederson 2006, MobileHCI。48dp ≒ 7.6mm (160dpi 基準) |
 | 指の精度は位置で変わる | 画面の中央 7mm から隅 12mm。端に沿う行は高さ 9〜10mm 以上 | Hoober 2017 Part 3 (2026-11-14 に原文で直した。前は「端 9mm」と書いていたが、本文の 9〜10mm は端に置く行の高さの勧め) |
-| 持ち方 | 片手 49%・片手で持ち他方で操作 36%・両手 15% (1,333 件の観察、2013) | Hoober 2013 (UXmatters)。Hoober 自身が 2017 年 (Part 1) に、2013 年の記事は参照されすぎていて、その後の調査で多くを学んだと書き、まとめ直している。親指の届く範囲の図は「よく知られているが誤り」とし、利用者は画面の中央を見て押すのを好むと述べている (2026-11-14 に原文で直した。前は「古い前提の上の結論だったと書き直した」と書いていた) |
-| 下限 (参考) | WCAG 2.2 の 2.5.8 (AA) は 24 CSS px、2.5.5 (AAA) は 44 CSS px、Apple は 44pt | W3C・Apple (Apple は iOS の最小 44×44pt)。Android の 48dp より緩いので、このアプリでは 48dp を使う |
+| 持ち方 | 片手 49%・片手で持ち他方で操作 36%・両手 15% (2013 年の 1,333 件の観察のうち、画面に触れていた 780 人の割合) | Hoober 2013 (UXmatters)。Hoober 自身が 2017 年 (Part 1) に、昔の記事はデスクトップの観察・古い基準・逸話に基づく前提を含んでいて、その後の調査で捨てたと書き、まとめ直している。親指の届く範囲の図は「よく知られているが誤り」とし、利用者は画面の中央を見て押すのを好むと述べている |
+| 下限 (参考) | WCAG 2.2 の 2.5.8 (AA) は 24 CSS px、2.5.5 (AAA) は 44 CSS px、Apple は 44pt | W3C・Apple (Apple の HIG では iOS の既定の大きさが 44×44pt、最小が 28×28pt)。Android の 48dp より緩いので、このアプリでは 48dp を使う |
 | 文字の濃さの差 | 18sp 未満 (太字は 14sp 未満) で 4.5:1、それ以外 3:1 | Android 公式 (本文を確かめた) |
 | フレーム | 60fps で 16ms 以内。700ms を超えると「固まった」フレーム | Android 公式「Slow rendering」(本文を確かめた) |
 | 起動 | コールド 5 秒・ウォーム 2 秒・ホット 1.5 秒以上を Android vitals が「長すぎる」とする | Android 公式「App startup time」(本文を確かめた) |
@@ -88,14 +88,14 @@ Hoober の指摘から、「親指の届く範囲の図」で上下を切るの�
 - 2023-12-05 の刷新 (公式ブログ「Improving Our Mobile Experience」): 下のタブを入れ、**サーバーと DM を別のタブに分けた**。
   試験版への声を受けて、サーバーを横に並べる案をやめて縦の帯を残し、DM 全体の検索を足した。すべらせて返信を入れた。
   アプリを開く時間は Android で 55%・iOS で 43% 短くなったとする。
-- 強い反発。Discord は古い配置には戻せない、と伝えた (Android Authority)。
-  掲示板の声は「サーバーと DM の行き来に 2〜3 秒かかる」「前より遅い」(要約。support.discord.com は 403 で開けていない)。
+- 強い反発。Discord は古い配置には戻せない、と伝えた (Android Authority)。Android Authority が挙げる不満は、デスクトップとの違い・慣れた操作が使えないこと・不具合。
+  掲示板の声は「サーバーと DM の行き来に 2〜3 秒かかる」「前より遅い」(要約。support.discord.com は 403 で開けていない。遅さを反発の中身として挙げた原文は、ほかに見つけていない)。
 - 2024-04 のパッチノート: サーバーの切り替えを 30% 以上速くした。
 - 2024-05-22 (公式ブログ「Refining Discord's Mobile Experience With Your Feedback」): **サーバーと DM のタブを一つに戻した**。
   理由は「スマホとデスクトップで、頭の中の切り替えが難しい。大事な人と場所が、デスクトップと違う場所にある」という声が一貫して多かったこと。
   すべらせて返信も、すべらせてメンバー一覧に戻す (返信は設定で残せるようにする) とした。
-- 教訓: 反発の中身は **遅さ** だけでなく、**配置そのもの** (よく使う行き先を分けたこと、ほかの端末と配置が違うこと) にもあり、
-  Discord は配置を半年で戻した。速くするだけでは足りなかった。
+- 教訓: 反発の中身には **配置そのもの** (よく使う行き先を分けたこと、ほかの端末と配置が違うこと) があり (公式ブログで確かめた)、
+  Discord は速くした後も、配置を半年で戻した。速くするだけでは足りなかった。**遅さ** が中身だったことは、掲示板の要約でしか読めていない。
   (2026-11-13 の持ち主との相談では「配置より遅さとよく使う操作が遠くなったこと」を教訓にしていた。原文では、これは半分だけ合っている)
 
 ### Telegram Android (報道・要望掲示板)
@@ -149,7 +149,7 @@ Hoober の指摘から、「親指の届く範囲の図」で上下を切るの�
 
 - **P-1 待たせない**: 一度見たもの (チャンネルの一覧・メッセージ・画像) は、通信を待たずにすぐ出し、新しいものは裏で取って差し替える。
   画面の中央に回転アイコンを出すのは、手元に何も無いときだけ。スケルトンは使わない。
-  根拠: Nielsen の 1 秒、Viget 2017 (要約)、Discord の刷新への反発 (遅さ)、レビューの「Connecting…」。
+  根拠: Nielsen の 1 秒、Viget 2017 (要約)、Discord の刷新への反発 (遅さ。掲示板の要約)、レビューの「Connecting…」。
 - **P-2 つながっていなくても読める・書ける**: 接続の状態は小さく正直に出すが、それで読む・書くを止めない (送信は D-029 の送信待ちへ)。
   根拠: レビューの「接続・送受信」(Telegram の低評価の約 4 分の 1)。
 - **P-3 よく使う操作は近くに**: 読む・返す・自分宛てを拾う・切り替える・探すは、ホームかチャンネルから 2 手以内。
@@ -377,7 +377,7 @@ switch_after_reconnect の遅い回線の値には、A の取り直しとの重�
 - Android: Slow rendering https://developer.android.com/topic/performance/vitals/render
 - Android: App startup time (vitals) https://developer.android.com/google/play/vitals/launch-time
 - W3C WCAG 2.2 Understanding 2.5.8 https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html ・2.5.5 https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html
-- Apple Human Interface Guidelines: Accessibility https://developer.apple.com/design/human-interface-guidelines/accessibility (iOS・iPadOS の最小の大きさ 44×44pt)
+- Apple Human Interface Guidelines: Accessibility https://developer.apple.com/design/human-interface-guidelines/accessibility (iOS・iPadOS の既定の大きさ 44×44pt、最小 28×28pt)
 - Slack (2020-05-13) Why we reimagined Slack for iPhone and Android—and what we learned along the way. https://slack.com/blog/productivity/simpler-more-organized-slack-mobile-app
 - VentureBeat (2023) Slack defends controversial redesign amid sharp criticism (要約。ボットの確認で開けない)
 - Discord (2023-12-05) Improving Our Mobile Experience. https://discord.com/blog/improving-our-mobile-experience
