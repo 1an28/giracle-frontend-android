@@ -57,6 +57,8 @@ object TestTags {
     /** 送信待ちの一覧 (#30) */
     const val COMPOSER_OUTBOX = "composer.outbox"
     const val COMPOSER_SEND = "composer.send"
+    /** 返信先の表示 (入力欄の上) */
+    const val COMPOSER_REPLY = "composer.reply"
 
     // 設定
     const val SETTINGS_KEEP_CONNECTION = "settings.keep_connection"

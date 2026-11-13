@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -201,6 +202,24 @@ class UiScreenshotTest {
         // 右上の「閉じる」で閉じる
         rule.onNodeWithContentDescription("閉じる").performClick()
         waitGone(TestTags.IMAGE_VIEWER)
+    }
+
+    /** メッセージを右へすべらせると返信になる (D-043) */
+    @Test fun swipeToReply() {
+        assumeTrue(server != null)
+        val ch = newChannel("swipe")
+        val target = send(ch, "すべらせて返信するメッセージ")
+
+        startApp()
+        click(TestTags.homeChannel(ch))
+        waitTag(TestTags.message(target))
+        // 指を離さずに右へ 120dp 動かし、離す
+        rule.onNodeWithTag(TestTags.message(target)).performTouchInput {
+            down(centerLeft + androidx.compose.ui.geometry.Offset(20f, 0f))
+            repeat(10) { moveBy(androidx.compose.ui.geometry.Offset(36f, 0f)) }
+            up()
+        }
+        waitTag(TestTags.COMPOSER_REPLY); shot("11_swipe_reply")
     }
 
     @Test fun longText() {
