@@ -7,6 +7,11 @@ import android.os.Environment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -124,7 +129,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
     var actionsFor by remember { mutableStateOf<Message?>(null) }
     var pickerFor by remember { mutableStateOf<Message?>(null) }
     var whoReacted by remember { mutableStateOf<Pair<Message, String>?>(null) }
-    var imageUrl by remember { mutableStateOf<String?>(null) }
+    var viewing by remember { mutableStateOf<FileAttached?>(null) }
     var expanded by remember { mutableStateOf<Message?>(null) }
     var userSheet by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<Message?>(null) }
@@ -221,7 +226,7 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
             onMessageLink = { ch, id -> if (ch == channelId) scope.launch { jump(id) } else nav.openChannel(ch, id) },
             onToggleReaction = { m, code -> scope.launch { runCatching { store.toggleReaction(m, code) }.onFailure { ctx.toast(it.userMessage()) } } },
             onReactionLongPress = { m, code -> whoReacted = m to code },
-            onImageClick = { imageUrl = it },
+            onImageClick = { viewing = it },
             onFileDownload = { f -> download(ctx, graph.api.fileUrl(f.id), f, graph.prefs.token) },
             onExpand = { expanded = it },
         )
@@ -366,7 +371,9 @@ fun ChannelScreen(channelId: String, jumpTo: String?) {
         )
     }
     whoReacted?.let { (m, code) -> WhoReactedDialog(m, code, onUser = { userSheet = it; whoReacted = null }) { whoReacted = null } }
-    imageUrl?.let { ImageViewer(it) { imageUrl = null } }
+    viewing?.let { f ->
+        ImageViewer(f, graph.api.fileUrl(f.id), onDismiss = { viewing = null }, onSave = { download(ctx, graph.api.fileUrl(f.id), f, graph.prefs.token) })
+    }
     expanded?.let { m ->
         Dialog(onDismissRequest = { expanded = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize().exposeTestTags().testTag(TestTags.LONG_TEXT_DIALOG).padding(12.dp), shape = MaterialTheme.shapes.large) {
@@ -429,25 +436,64 @@ private fun WhoReactedDialog(m: Message, code: String, onUser: (String) -> Unit,
     )
 }
 
-/** 画像の全画面表示 (ピンチで拡大) */
+/**
+ * 画像の全画面表示。ピンチ・ダブルタップで拡大し、拡大中は画像の外まで動かせない。タップで閉じる。
+ * 拡大しても粗くならないよう、画面の 2 倍 (長辺 4096px まで) の大きさで読み込む。上の「保存」で端末に保存する
+ */
 @Composable
-fun ImageViewer(url: String, onDismiss: () -> Unit) {
+fun ImageViewer(f: FileAttached, url: String, onDismiss: () -> Unit, onSave: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val ctx = LocalContext.current
         var scale by remember { mutableStateOf(1f) }
         var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+        var box by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+        // 拡大した分だけ動かせる (画像の端が画面の端を越えて内側に入らない)
+        fun clamp(o: androidx.compose.ui.geometry.Offset, s: Float): androidx.compose.ui.geometry.Offset {
+            val mx = box.width * (s - 1f) / 2f
+            val my = box.height * (s - 1f) / 2f
+            return androidx.compose.ui.geometry.Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
+        }
+        val maxSide = with(LocalDensity.current) {
+            val c = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+            (maxOf(c.width, c.height) * 2).coerceIn(1024, 4096)
+        }
+        val req = remember(url, maxSide) { coil3.request.ImageRequest.Builder(ctx).data(url).size(maxSide).build() }
         Box(
-            Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onDismiss)
+            Modifier.fillMaxSize().exposeTestTags().testTag(TestTags.IMAGE_VIEWER).background(Color.Black)
+                .onSizeChanged { box = it }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { onDismiss() },
+                        onDoubleTap = { p ->
+                            if (scale > 1f) { scale = 1f; offset = androidx.compose.ui.geometry.Offset.Zero }
+                            else {
+                                // 押した所を中心に 2.5 倍にする
+                                val s = 2.5f
+                                val c = androidx.compose.ui.geometry.Offset(box.width / 2f, box.height / 2f)
+                                scale = s
+                                offset = clamp((c - p) * (s - 1f), s)
+                            }
+                        },
+                    )
+                }
                 .pointerInput(Unit) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         scale = (scale * zoom).coerceIn(1f, 6f)
-                        offset = if (scale == 1f) androidx.compose.ui.geometry.Offset.Zero else offset + pan
+                        offset = if (scale == 1f) androidx.compose.ui.geometry.Offset.Zero else clamp(offset + pan, scale)
                     }
                 },
         ) {
             AsyncImage(
-                model = url, contentDescription = null, contentScale = ContentScale.Fit,
+                model = req, contentDescription = f.actualFileName, contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
             )
+            Row(
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                IconButton(onClick = onSave) { Icon(AppIcons.Download, "保存", tint = Color.White) }
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "閉じる", tint = Color.White) }
+            }
         }
     }
 }

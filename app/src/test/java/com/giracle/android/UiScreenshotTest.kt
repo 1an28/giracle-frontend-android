@@ -15,6 +15,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -184,6 +185,22 @@ class UiScreenshotTest {
         back(TestTags.SCREEN_HOME)
         click(TestTags.HOME_SETTINGS); waitTag(TestTags.SCREEN_SETTINGS); shot("07_settings")
         back(TestTags.SCREEN_HOME)
+    }
+
+    @Test fun imageViewer() {
+        assumeTrue(server != null)
+        val ch = newChannel("image")
+        sendImage(ch, "画像の全画面表示")
+
+        startApp()
+        click(TestTags.homeChannel(ch))
+        val img = SemanticsMatcher("画像") { n -> n.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("channel.image") == true }
+        waitFor(img)
+        rule.onAllNodes(img)[0].performClick()
+        waitTag(TestTags.IMAGE_VIEWER); shot("10_image_viewer")
+        // 右上の「閉じる」で閉じる
+        rule.onNodeWithContentDescription("閉じる").performClick()
+        waitGone(TestTags.IMAGE_VIEWER)
     }
 
     @Test fun longText() {

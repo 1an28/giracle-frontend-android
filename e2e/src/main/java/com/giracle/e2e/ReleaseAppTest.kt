@@ -162,6 +162,15 @@ class ReleaseAppTest {
         shot("shared")
         assertAlive("共有の投稿の後")
 
+        // 6b. 画像を押すと全画面で開き、戻るで閉じる (配布版で、拡大用の大きさの読み込みが落ちないこと)
+        wait(res("channel.image_loaded:$imageId"), 5_000, "送った画像").click()
+        wait(res("channel.image_viewer"), 10_000, "画像の全画面表示")
+        SystemClock.sleep(1_500) // 大きい方の読み込みを待つ
+        shot("image_viewer")
+        assertAlive("画像の全画面表示")
+        device.pressBack()
+        waitFor("画像の全画面表示が閉じる", 5_000) { device.findObject(res("channel.image_viewer")) == null }
+
         // 7. 背面に回して戻る: 背面の間の投稿が戻ったときに取り直され、その後の投稿も WebSocket で届く
         device.pressHome()
         SystemClock.sleep(5_000) // 背面では切断する設定 (常時接続 OFF) なので、切断を待つ

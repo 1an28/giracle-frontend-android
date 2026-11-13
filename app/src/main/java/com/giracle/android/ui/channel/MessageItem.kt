@@ -88,7 +88,7 @@ class MessageCallbacks(
     val onMessageLink: (String, String) -> Unit,
     val onToggleReaction: (Message, String) -> Unit,
     val onReactionLongPress: (Message, String) -> Unit,
-    val onImageClick: (String) -> Unit,
+    val onImageClick: (FileAttached) -> Unit,
     val onFileDownload: (FileAttached) -> Unit,
     val onExpand: (Message) -> Unit,
 )
@@ -396,7 +396,7 @@ private fun ImageAttachment(f: FileAttached, size: ImageSize?, cb: MessageCallba
     val ctx = LocalContext.current
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
     if (!settings.autoLoadImages) {
-        FileCard(f, cb, onOpen = { cb.onImageClick(graph.api.fileUrl(f.id)) })
+        FileCard(f, cb, onOpen = { cb.onImageClick(f) })
         return
     }
     // 縦横比が分かっていれば先に枠を確保し、読み込み後にレイアウトが跳ねないようにする
@@ -412,7 +412,7 @@ private fun ImageAttachment(f: FileAttached, size: ImageSize?, cb: MessageCallba
         modifier = Modifier.testTag(TestTags.image(f.id, loaded)).padding(vertical = 4.dp).widthIn(max = 320.dp).heightIn(max = 320.dp)
             .then(if (ratio != null) Modifier.aspectRatio(ratio) else Modifier.heightIn(min = 120.dp))
             .clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { cb.onImageClick(url) },
+            .clickable { cb.onImageClick(f) },
     )
 }
 
