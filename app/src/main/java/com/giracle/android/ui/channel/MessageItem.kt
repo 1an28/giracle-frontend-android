@@ -88,7 +88,7 @@ class MessageCallbacks(
     val onMessageLink: (String, String) -> Unit,
     val onToggleReaction: (Message, String) -> Unit,
     val onReactionLongPress: (Message, String) -> Unit,
-    val onImageClick: (String) -> Unit,
+    val onImageClick: (FileAttached) -> Unit,
     val onFileDownload: (FileAttached) -> Unit,
     val onExpand: (Message) -> Unit,
 )
@@ -396,14 +396,14 @@ private fun ImageAttachment(f: FileAttached, size: ImageSize?, cb: MessageCallba
     val ctx = LocalContext.current
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
     if (!settings.autoLoadImages) {
-        FileCard(f, cb, onOpen = { cb.onImageClick(graph.api.fileUrl(f.id)) })
+        FileCard(f, cb, onOpen = { cb.onImageClick(f) })
         return
     }
     // 縦横比が分かっていれば先に枠を確保し、読み込み後にレイアウトが跳ねないようにする
     val ratio = size?.let { (it.width.toFloat() / it.height.toFloat()).coerceIn(0.4f, 3f) }
     val maxPx = with(LocalDensity.current) { 320.dp.roundToPx() }
     val url = graph.api.fileUrl(f.id)
-    val req = remember(url) { ImageRequest.Builder(ctx).data(url).size(maxPx).build() }
+    val req = remember(url) { ImageRequest.Builder(ctx).data(url).size(maxPx).precision(coil3.size.Precision.INEXACT).build() }
     // 読み込みが済んだかを testTag で外から分かるようにする (画像の読み込みは画面の情報に出ないため。D-016、#20)
     var loaded by remember(url) { mutableStateOf(false) }
     AsyncImage(
@@ -412,7 +412,7 @@ private fun ImageAttachment(f: FileAttached, size: ImageSize?, cb: MessageCallba
         modifier = Modifier.testTag(TestTags.image(f.id, loaded)).padding(vertical = 4.dp).widthIn(max = 320.dp).heightIn(max = 320.dp)
             .then(if (ratio != null) Modifier.aspectRatio(ratio) else Modifier.heightIn(min = 120.dp))
             .clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { cb.onImageClick(url) },
+            .clickable { cb.onImageClick(f) },
     )
 }
 

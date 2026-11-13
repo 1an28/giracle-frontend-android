@@ -7,8 +7,10 @@ import com.giracle.android.data.net.ApiException
 import com.giracle.android.data.net.AppJson
 import com.giracle.android.data.net.GiracleApi
 import com.giracle.android.data.net.WsClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -125,6 +127,7 @@ class ChatStore(
     private val histories = ConcurrentHashMap<String, MutableStateFlow<HistoryState>>()
     private val historyLocks = ConcurrentHashMap<String, Mutex>()
     private val userRequests = ConcurrentHashMap<String, Job>()
+    /** WebSocket 関係の購読をまとめた親。stop() でまとめて止める (ログアウト後に古いストアが動き続けないように) */
     private var wsJob: Job? = null
 
     fun history(channelId: String): StateFlow<HistoryState> =
@@ -161,12 +164,15 @@ class ChatStore(
 
     private fun startWs() {
         if (wsJob == null) {
-            wsJob = scope.launch { ws.frames.collect { runCatching { handle(it) }.onFailure { e -> Log.w(TAG, "ws handle", e) } } }
-            scope.launch {
+            val job = SupervisorJob(scope.coroutineContext[Job])
+            wsJob = job
+            val s = CoroutineScope(scope.coroutineContext + job)
+            s.launch { ws.frames.collect { runCatching { handle(it) }.onFailure { e -> Log.w(TAG, "ws handle", e) } } }
+            s.launch {
                 var last = ws.reconnects.value
                 ws.reconnects.collect { n -> if (n != last) { last = n; resync() } }
             }
-            scope.launch {
+            s.launch {
                 ws.state.collect { s ->
                     if (s == WsClient.State.Connected) runCatching { online.value = api.onlineUsers().toSet() }
                     if (s == WsClient.State.AuthError) checkSession()
@@ -187,15 +193,32 @@ class ChatStore(
     }
 
     /** 再接続後の再同期 (Web 版 resyncAfterReconnect と同等) */
-    private suspend fun resync() {
+    internal suspend fun resync() {
         val uid = me.value?.id ?: return
-        runCatching { initialLoadNoWs(uid) }
-        // 開いていないチャンネルの履歴は捨て、開いているチャンネルは最新側を取り直す
+        try {
+            initialLoadNoWs(uid)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "resync: reload failed", e)
+        }
+        // 開いていないチャンネルの履歴は捨て、開いているチャンネルは最新側を取り直す。
+        // 開いているチャンネルは、取り直すまで今の表示を残す (fromCache にすると openChannel が取り直す)。
+        // 取り直しに失敗しても、表示はそのまま残り、次に開いたときに取り直す。
+        // 以前は表示を空にしてから取り直しており、失敗すると例外が購読の外まで抜けてアプリが落ちていた
+        val current = currentChannelId
         for ((id, flow) in histories) {
-            if (id == currentChannelId) {
-                flow.value = HistoryState()
-                openChannel(id)
-            } else flow.value = HistoryState()
+            if (id != current) flow.value = HistoryState()
+        }
+        if (current != null) {
+            histories[current]?.update { if (it.loaded) it.copy(fromCache = true) else it }
+            try {
+                openChannel(current)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "resync: reopen failed", e)
+            }
         }
     }
 
@@ -352,6 +375,7 @@ class ChatStore(
             } catch (e: ApiException) {
                 false
             }
+            // 通信の失敗 (圏外など) は呼び出し側に投げる。「削除された」とは別の案内を出すため
         }
     }
 

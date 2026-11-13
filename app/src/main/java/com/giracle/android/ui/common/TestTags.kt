@@ -47,6 +47,8 @@ object TestTags {
     fun reaction(messageId: String, emojiCode: String) = "channel.reaction:$messageId:$emojiCode"
     /** 添付画像。読み込みが済むと「channel.image_loaded:」に変わる */
     fun image(fileId: String, loaded: Boolean) = (if (loaded) "channel.image_loaded:" else "channel.image:") + fileId
+    /** 画像の全画面表示 */
+    const val IMAGE_VIEWER = "channel.image_viewer"
     fun expandLongText(messageId: String) = "channel.expand:$messageId"
     const val LONG_TEXT_DIALOG = "channel.long_text"
     const val COMPOSER_INPUT = "composer.input"

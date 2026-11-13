@@ -35,6 +35,8 @@ class Navigator {
 
     /** チャンネルを開く。チャンネル間の移動は積み重ねず置き換える */
     fun openChannel(channelId: String, messageId: String? = null) {
+        // どこから開いたかを後で追えるよう記録する (e2e の失敗の手がかり。呼び出し元は stack trace の 2 行目)
+        android.util.Log.i("GiracleNav", "openChannel $channelId msg=$messageId from=" + Throwable().stackTrace.getOrNull(1)?.let { "${it.className}.${it.methodName}:${it.lineNumber}" })
         val target = Screen.Channel(channelId, messageId)
         val top = stack.last()
         if (top is Screen.Channel) stack[stack.lastIndex] = target else push(target)

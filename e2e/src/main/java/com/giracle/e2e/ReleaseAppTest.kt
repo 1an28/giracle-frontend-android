@@ -87,11 +87,10 @@ class ReleaseAppTest {
         wait(res("login.submit"), 5_000, "ログインボタン").click()
 
         // 3. 通知の権限の確認 (Android 13 以上)。許可しても落ちないこと
-        val allow = device.wait(Until.findObject(By.res(Pattern.compile(".*:id/permission_allow_button"))), 20_000)
         if (android.os.Build.VERSION.SDK_INT >= 33) {
-            if (allow == null) fail("通知の権限の確認画面が出ない")
+            if (device.wait(Until.findObject(ALLOW_BUTTON), 20_000) == null) fail("通知の権限の確認画面が出ない")
             shot("permission")
-            allow!!.click()
+            if (!clickAllowSettled()) fail("通知の権限の確認画面を閉じられない")
         }
         wait(res("screen.home"), 20_000, "ホーム画面")
         assertAlive("通知の権限を許可した後")
@@ -161,6 +160,15 @@ class ReleaseAppTest {
         wait(By.text(txt), 10_000, "送った文書ファイルの表示")
         shot("shared")
         assertAlive("共有の投稿の後")
+
+        // 6b. 画像を押すと全画面で開き、戻るで閉じる (配布版で、拡大用の大きさの読み込みが落ちないこと)
+        wait(res("channel.image_loaded:$imageId"), 5_000, "送った画像").click()
+        wait(res("channel.image_viewer"), 10_000, "画像の全画面表示")
+        SystemClock.sleep(1_500) // 大きい方の読み込みを待つ
+        shot("image_viewer")
+        assertAlive("画像の全画面表示")
+        device.pressBack()
+        waitFor("画像の全画面表示が閉じる", 5_000) { device.findObject(res("channel.image_viewer")) == null }
 
         // 7. 背面に回して戻る: 背面の間の投稿が戻ったときに取り直され、その後の投稿も WebSocket で届く
         device.pressHome()
@@ -275,7 +283,7 @@ class ReleaseAppTest {
         wait(res("login.password"), 5_000, "パスワード欄").text = adminPass
         hideKeyboard()
         wait(res("login.submit"), 5_000, "ログインボタン").click()
-        device.wait(Until.findObject(By.res(Pattern.compile(".*:id/permission_allow_button"))), 15_000)?.click()
+        if (device.wait(Until.findObject(ALLOW_BUTTON), 15_000) != null) clickAllowSettled()
         wait(res("screen.home"), 20_000, "ホーム画面 (LAN のサーバー)")
         findScrolling(res("home.channel:$channelId"), "確認用チャンネル").click()
         wait(res("screen.channel"), 10_000, "チャンネル画面")
@@ -355,7 +363,7 @@ class ReleaseAppTest {
     }
 
     private fun wait(sel: BySelector, timeoutMs: Long, what: String): UiObject2 =
-        waitDismissingSystemDialogs(sel, timeoutMs) ?: run {
+        waitDismissingSystemDialogs(sel, timeoutMs.also { Log.i(TAG, "待つ: $what") }) ?: run {
             assertAlive("「$what」を待つ間")
             shot("missing")
             fail("「$what」が ${timeoutMs / 1000} 秒以内に出ない"); error("unreachable")
@@ -372,10 +380,35 @@ class ReleaseAppTest {
                 Log.w(TAG, "システムのダイアログを閉じた: " + device.findObject(By.res("android:id/alertTitle"))?.text)
                 it.click()
             }
+            // 通知の許可の確認は、ログイン後に遅れて出ることがある (待つ時間を過ぎてから出て、画面を覆ったまま失敗した例がある)。
+            // 出ていたら許可して閉じる
+            if (device.findObject(ALLOW_BUTTON) != null) {
+                val msg = device.findObject(By.res(Pattern.compile(".*:id/permission_message")))?.text.orEmpty()
+                if ("notifications" in msg || "通知" in msg) {
+                    Log.w(TAG, "遅れて出た通知の許可の確認を閉じる ($msg)")
+                    clickAllowSettled()
+                }
+            }
             val left = end - SystemClock.uptimeMillis()
             if (left <= 0) return null
             device.wait(Until.findObject(sel), minOf(left, 2_000L))?.let { return it }
         }
+    }
+
+    /**
+     * 権限の確認の「許可」を押す。確認画面が出てすぐ (表示の動きの途中) に押すと、タップが下のアプリの画面に届き、
+     * ホームのチャンネルの行を押してしまうことがあった (LAN の確認で、ログイン後にチャンネル画面が開いて失敗した)。
+     * 落ち着くのを待ってから押し、閉じたことを確かめる。閉じられたら true
+     */
+    private fun clickAllowSettled(): Boolean {
+        repeat(3) {
+            device.waitForIdle()
+            SystemClock.sleep(800)
+            val b = device.findObject(ALLOW_BUTTON) ?: return true
+            b.click()
+            if (device.wait(Until.gone(ALLOW_BUTTON), 5_000)) return true
+        }
+        return device.findObject(ALLOW_BUTTON) == null
     }
 
     /** 一覧を送りながら探す (画面の外にある行・タブ用) */
@@ -408,5 +441,8 @@ class ReleaseAppTest {
         runCatching { device.takeScreenshot(File(shots, "%02d-%s.png".format(step++, name))) }
     }
 
-    companion object { private const val TAG = "GiracleE2E" }
+    companion object {
+        private const val TAG = "GiracleE2E"
+        private val ALLOW_BUTTON: BySelector = By.res(Pattern.compile(".*:id/permission_allow_button"))
+    }
 }

@@ -43,7 +43,7 @@ status=0
 # 失敗したときの手がかりを、成果物を開かなくても CI のログで読めるように出す
 show_clues() {
   echo "::group::logcat (アプリ・起動・クラッシュに関係する行)"
-  grep -E "GiracleE2E|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
+  grep -E "GiracleE2E|GiracleNav|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
   echo "::endgroup::"
   # アプリのプロセス (途中で作り直されたものも含む) の記録をすべて出す。プッシュ受信など、裏で起きたことを追うため
   pids=$(grep -oE "Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | grep -oE "[0-9]+" | tr '\n' '|' | sed 's/|$//')
@@ -75,6 +75,12 @@ fi
 if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"
   cat "$OUT/crash.txt"
+  status=1
+fi
+# 落ちはしないが、アプリ全体の裏の処理から想定外の例外が漏れた (D-036)。見逃さないよう失敗にする
+if grep -q "GiracleUncaught" "$OUT/logcat.txt"; then
+  echo "::error::想定外の例外が記録された (GiracleUncaught。D-036)"
+  grep -A 30 "GiracleUncaught" "$OUT/logcat.txt" | head -n 80
   status=1
 fi
 exit $status
