@@ -340,7 +340,7 @@ class ReleaseAppTest {
             val mention = "メンション-$suffix @<${admin.userId}>"
             bob.send(channelId, mention)
             val mentionId = admin.recent(channelId).first { it.content == mention }.id
-            back()
+            device.pressBack()
             wait(res("screen.home"), 10_000, "ホーム画面")
             SystemClock.sleep(2_000) // 通知 (受信箱) への反映を待つ
             UxTask("inbox").run {
@@ -351,7 +351,7 @@ class ReleaseAppTest {
             shot("ux_inbox")
 
             // 探す: ホーム → 検索 → 語を入れて検索 → 結果を開くと、そのメッセージが見える
-            back()
+            device.pressBack()
             wait(res("screen.home"), 10_000, "ホーム画面")
             UxTask("search").run {
                 tap(wait(res("home.search"), 5_000, "検索ボタン"))
