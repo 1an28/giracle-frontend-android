@@ -164,7 +164,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
             val failed = !p.ready && p.error != null
             // me の有無では決めない (ログイン直後に、一部の読み込みだけ成功して me が入る場合がある)
             if (failed && !restored) {
-                LoadError(p.error!!, loading = loading, onRetry = graph::retryLoad)
+                LoadError(p.error, loading = loading, onRetry = graph::retryLoad)
             } else Column(Modifier.fillMaxSize()) {
                 if (failed) OfflineBanner(loading = loading, onRetry = graph::retryLoad)
                 val screen = nav.current
