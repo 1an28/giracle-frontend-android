@@ -33,6 +33,8 @@ class WsClient(
     private val scope: CoroutineScope,
     /** この時間より長く「接続中」のままの試みは、回線が変わったとき ([nudge]) に捨ててやり直す (#101) */
     private val staleConnectMs: Long = 3_000L,
+    /** この時間たっても「接続中」の試みは、回線の知らせを待たずに取り消して、いつものつなぎ直しに回す (#101) */
+    private val connectWatchdogMs: Long = 20_000L,
     private val endpointProvider: () -> Endpoint,
 ) {
     enum class State { Disconnected, Connecting, Connected, AuthError }
@@ -56,6 +58,7 @@ class WsClient(
     @Volatile private var openedAt = 0L
     private var retryJob: Job? = null
     private var pingJob: Job? = null
+    private var watchdogJob: Job? = null
     private var attempts = 0
     private var everConnected = false
 
@@ -72,6 +75,7 @@ class WsClient(
         wanted = false
         retryJob?.cancel()
         pingJob?.cancel()
+        watchdogJob?.cancel()
         socket?.close(1000, null)
         socket = null
         _state.value = State.Disconnected
@@ -106,7 +110,17 @@ class WsClient(
             .url(ep.wsUrl)
             .header("Origin", ep.originHeader)
             .build()
-        socket = client.newWebSocket(req, Listener())
+        val s = client.newWebSocket(req, Listener())
+        socket = s
+        // 固まった試みの見張り。取り消すと onFailure が呼ばれ、onEnd から待ち時間を置いてつなぎ直す
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            delay(connectWatchdogMs)
+            if (socket === s && _state.value == State.Connecting) {
+                Log.i(TAG, "connect watchdog: cancel stuck attempt")
+                s.cancel()
+            }
+        }
     }
 
     private inner class Listener : WebSocketListener() {

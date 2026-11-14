@@ -91,4 +91,17 @@ class WsClientReconnectTest {
         assertEquals(WsClient.State.Connecting, ws.state.value)
         ws.stop()
     }
+
+    /** 回線の知らせが来なくても、固まった試みは見張りが取り消し、つなぎ直す */
+    @Test fun watchdogRetriesStuckAttempt() {
+        thread(isDaemon = true) { runCatching { while (true) { val s = silent.accept(); synchronized(accepted) { accepted += s } } } }
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val http = buildOkHttp(Prefs(ctx, "test-ws3"), null)
+        val ep = Endpoint.parse("http://127.0.0.1:${silent.localPort}")!!
+        val ws = WsClient(http, scope, staleConnectMs = 60_000, connectWatchdogMs = 300) { ep }
+        ws.start()
+        // 1 回目が固まり、見張りが取り消し、待ち時間 (約 1 秒) の後に 2 回目の試みが届く
+        waitFor { synchronized(accepted) { accepted.size >= 2 } }
+        ws.stop()
+    }
 }
