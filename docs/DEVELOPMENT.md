@@ -132,11 +132,12 @@ python3 devtools/push-e2e.py          # 登録 → メンション → 受信 �
    - それ以外の競合 (ROADMAP.md など) は手で直す。追記どうしは両方残し、書き換えどうしは両方の意図を合わせる
    - union は自分の追記を先に置くので、番号の順が前後することがある。並べ直す
    - 判断の番号が重なっていたら、自分の方を付け直す (本文・コミット以外の文書・PR の説明の参照も)
-   - 取り込む前に、待つ CI を決めるための材料を取っておく (D-058):
-     `B=$(git merge-base HEAD origin/main)`、PR の変更 `git diff --name-only $B HEAD`、取り込む main の変更 `git diff --name-only $B origin/main`
-   - 取り込んで push したら、待つ CI を決める:
+   - 取り込んで push したら、待つ CI を決める (D-058)。取り込んだ直後なら `ORIG_HEAD` が取り込む前の自分の HEAD なので、
+     `B=$(git merge-base ORIG_HEAD origin/main)` として、PR の変更 `git diff --name-only $B ORIG_HEAD` と、
+     取り込んだ main の変更 `git diff --name-only $B origin/main` を比べる (取り込んだ後に `merge-base HEAD origin/main` を使うと、main の変更が空になり、必ず「重なりなし」になる)
      - 両方に、`docs/` 以外で同じファイルがあれば、2. に戻り CI 全部が通るのを確かめる
-     - 無ければ、docs-check (判断の番号の重なり) が通るのを待つだけでよい。ほかの CI は、取り込む前のコミットで通っていればよい
+     - 無ければ、docs-check (判断の番号の重なり) が通るのを待つだけでよい。ただし、この PR で CI 全部が最後に通ったコミットがあることが条件。
+       CI が取り消された (build・live-test・e2e は新しい push で前の実行を取り消す) などで、全部が通ったコミットが無ければ、CI 全部を待つ
      - 違うファイルどうしでも壊れることはある (片方が名前を変え、もう片方が古い名前で使うなど)。まれと見て、マージ後の main の CI で見つける
 4. **マージ**: 直前にもう一度 `git fetch origin main` し、3. で取り込んだ main から進んでいないことを確かめる (進んでいたら 3. に戻る)。
    GitHub の MCP の `merge_pull_request` に、3. で確かめたコミットを `expectedHeadSha` として渡してマージする
