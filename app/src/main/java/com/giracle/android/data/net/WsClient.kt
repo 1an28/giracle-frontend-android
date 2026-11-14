@@ -31,6 +31,8 @@ import kotlin.random.Random
 class WsClient(
     private val client: OkHttpClient,
     private val scope: CoroutineScope,
+    /** この時間より長く「接続中」のままの試みは、回線が変わったとき ([nudge]) に捨ててやり直す (#101) */
+    private val staleConnectMs: Long = 3_000L,
     private val endpointProvider: () -> Endpoint,
 ) {
     enum class State { Disconnected, Connecting, Connected, AuthError }
@@ -50,6 +52,8 @@ class WsClient(
 
     @Volatile private var socket: WebSocket? = null
     @Volatile private var wanted = false
+    /** 今の試みを始めた時刻 (経過時間の時計)。接続中のまま固まった試みを見分ける (#101) */
+    @Volatile private var openedAt = 0L
     private var retryJob: Job? = null
     private var pingJob: Job? = null
     private var attempts = 0
@@ -73,10 +77,20 @@ class WsClient(
         _state.value = State.Disconnected
     }
 
-    /** アプリが前面に戻ったときなど、すぐに再接続を試す */
+    /**
+     * 回線がつながったときなど、すぐに再接続を試す。
+     * 接続中のまま [staleConnectMs] より経った試みも捨ててやり直す。圏外の間に始めた試みが固まり、
+     * 電波が戻っても「接続中」のまま再接続されず、送信待ちが送られないことがあった (#101、e2e の記録で確かめた)
+     */
     fun nudge() {
         if (!wanted) return
-        if (_state.value == State.Disconnected) {
+        val stale = _state.value == State.Connecting && System.nanoTime() / 1_000_000 - openedAt > staleConnectMs
+        if (_state.value == State.Disconnected || stale) {
+            if (stale) {
+                Log.i(TAG, "drop stale attempt")
+                socket?.cancel()
+                socket = null
+            }
             retryJob?.cancel()
             attempts = 0
             open()
@@ -85,6 +99,8 @@ class WsClient(
 
     private fun open() {
         val ep = endpointProvider()
+        Log.i(TAG, "opening (attempt $attempts)")
+        openedAt = System.nanoTime() / 1_000_000
         _state.value = State.Connecting
         val req = Request.Builder()
             .url(ep.wsUrl)
