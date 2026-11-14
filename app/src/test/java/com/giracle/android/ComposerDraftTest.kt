@@ -50,6 +50,8 @@ class ComposerDraftTest {
     private val channelId = "ch-draft"
     /** 編集の保存で届いた本文 */
     @Volatile private var editBody: String? = null
+    /** true なら、送信をサーバーが断る (電波以外の失敗) */
+    @Volatile private var sendFails = false
 
     @Before fun setUp() {
         server.dispatcher = object : Dispatcher() {
@@ -60,6 +62,7 @@ class ComposerDraftTest {
                 }
                 if (!request.url.encodedPath.endsWith("message/send")) return MockResponse.Builder().code(404).build()
                 release.await(30, TimeUnit.SECONDS)
+                if (sendFails) return MockResponse.Builder().code(400).addHeader("Content-Type", "application/json").body("""{"message":"断りました"}""").build()
                 val body = """{"message":"ok","data":{"id":"m1","channelId":"$channelId","userId":"u1","content":"一つ目","createdAt":"2026-11-14T00:00:00.000Z"}}"""
                 return MockResponse.Builder().code(200).addHeader("Content-Type", "application/json").body(body).build()
             }
@@ -195,5 +198,98 @@ class ComposerDraftTest {
         rule.mainClock.advanceTimeBy(1_000)
         rule.waitForIdle()
         assertEquals("下書き", persistedDraft())
+    }
+
+    /** 送信が失敗したら、送った本文が入力欄に戻り、送信中に打った文は後ろに残る */
+    @Test fun failedSendRestoresTextBeforeTypedText() {
+        val graph = ApplicationProvider.getApplicationContext<GiracleApp>().graph
+        graph.setServer(server.url("/").toString(), true)
+        sendFails = true
+        rule.setContent {
+            CompositionLocalProvider(LocalGraph provides graph, LocalStore provides graph.store) {
+                Composer(channelId, replyTo = null, onCancelReply = {}, editing = null, onCancelEdit = {})
+            }
+        }
+        val input = rule.onNodeWithTag(TestTags.COMPOSER_INPUT)
+        input.performTextInput("一つ目")
+        rule.onNodeWithTag(TestTags.COMPOSER_SEND).performClick()
+        await { server.requestCount > 0 }
+        input.performTextInput("二つ目")
+        await { persistedDraft() == "二つ目" }
+
+        release.countDown()
+        await { inputText() == "一つ目\n二つ目" }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        assertEquals("一つ目\n二つ目", Drafts.get(ctx, channelId))
+        assertEquals("一つ目\n二つ目", persistedDraft())
+    }
+
+    /**
+     * 送信中に編集に入り、その間に送信が失敗しても、編集の欄に送れなかった本文を混ぜない。
+     * 送れなかった本文は下書きに戻り、編集を抜けると入力欄に出る (#97)
+     */
+    @Test fun failedSendWhileEditingDoesNotMixIntoEdit() {
+        val graph = ApplicationProvider.getApplicationContext<GiracleApp>().graph
+        graph.setServer(server.url("/").toString(), true)
+        sendFails = true
+        var editing by mutableStateOf<Message?>(null)
+        rule.setContent {
+            CompositionLocalProvider(LocalGraph provides graph, LocalStore provides graph.store) {
+                Composer(channelId, replyTo = null, onCancelReply = {}, editing = editing, onCancelEdit = { editing = null })
+            }
+        }
+        rule.onNodeWithTag(TestTags.COMPOSER_INPUT).performTextInput("一つ目")
+        rule.onNodeWithTag(TestTags.COMPOSER_SEND).performClick()
+        await { server.requestCount > 0 }
+
+        editing = mine
+        await { inputText() == "古い本文" }
+        release.countDown()
+        await { Drafts.get(ctx, channelId) == "一つ目" }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        assertEquals("古い本文", inputText())
+        assertEquals("一つ目", persistedDraft())
+
+        editing = null
+        await { inputText() == "一つ目" }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        assertEquals("一つ目", Drafts.get(ctx, channelId))
+        assertEquals("一つ目", persistedDraft())
+    }
+
+    /**
+     * 送信中にチャンネルを開き直して (入力欄が作り直される) 打った文も、送信が失敗したときに消えない。
+     * 送れなかった本文は、見えている入力欄に戻る (#89)
+     */
+    @Test fun failedSendAfterReopeningChannelKeepsBoth() {
+        val graph = ApplicationProvider.getApplicationContext<GiracleApp>().graph
+        graph.setServer(server.url("/").toString(), true)
+        sendFails = true
+        var shown by mutableStateOf(channelId)
+        rule.setContent {
+            CompositionLocalProvider(LocalGraph provides graph, LocalStore provides graph.store) {
+                Composer(shown, replyTo = null, onCancelReply = {}, editing = null, onCancelEdit = {})
+            }
+        }
+        rule.onNodeWithTag(TestTags.COMPOSER_INPUT).performTextInput("一つ目")
+        rule.onNodeWithTag(TestTags.COMPOSER_SEND).performClick()
+        await { server.requestCount > 0 }
+
+        shown = "ch-other"
+        rule.waitForIdle()
+        shown = channelId // 入力欄は下書きから作り直される
+        rule.waitForIdle()
+        rule.onNodeWithTag(TestTags.COMPOSER_INPUT).performTextInput("二つ目")
+        await { persistedDraft() == "二つ目" }
+
+        release.countDown()
+        await { inputText() == "一つ目\n二つ目" }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        assertEquals("一つ目\n二つ目", Drafts.get(ctx, channelId))
+        assertEquals("一つ目\n二つ目", persistedDraft())
     }
 }
