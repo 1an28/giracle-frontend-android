@@ -111,3 +111,23 @@
   2024-05 には、すべらせて返信を、すべらせてメンバー一覧に戻す予定とした (返信は設定で残す予定)。
   - 推測: すべらせる操作は 1 つの方向に 1 つしか割り当てられず、取り合いになる。このアプリの「すべらせて返信」(e2e の reply で使っている) を変えるときは、この取り合いを考える
 
+
+### 人が使うアプリにとって、1.0 は何を意味するか (D-061)
+- 入り口: 1.0.0 の目標を持ち主と相談した。最初は「1.0 = 互換を約束する」を当たり前にしていたが、根拠の SemVer・Pantheon・Typst は
+  どれも他のプログラムが頼る部品 (公開 API・ライブラリ・言語) の話で、人が使うアプリに当てはまるかを確かめていなかった (持ち主に疑うよう言われて気づいた)
+- 確かめたこと (原文、2026-11-14):
+  - SemVer の FAQ: 本番で使われている・頼られている API がある・後方互換を気にしているなら 1.0.0 にすべき。Pantheon: stable は finished ではない (どちらもライブラリ向け)
+  - Runway: 自動更新のため「多くの利用者にとって版番号は見えないものになった」。Photoroom: 版番号はサポート・古い版を断る仕組みなど作る側のために使う。
+    どちらもストアの自動更新が前提。このアプリは GitHub の Releases から利用者が自分で入れ直す (README) ので、版番号は利用者に見えている
+  - SimpMusic (個人の Android アプリ): 1.0 にしたのは出来ではなく在り方の変化 (Android 専用 → 複数の OS) のため。「最終地点ではなく土台」
+  - NewPipe: 0.29 まで 0.x のまま。1.0 にしない理由は見つからなかった
+  - Element X (element.io): 2023-09 の Ignition は「管理者と早く試す人向け」「まだ今の Element アプリの完全な代わりではない」とし、
+    "we'll obviously aim for a production ready 1.0 as soon as possible" と書いた。2024-10 の deep dive は番号を使わず
+    "The Matrix Conference saw the official launch of Element X!"、"the mobile app that almost all Element users should be using"、
+    "ready for primetime" と書いた。1.0 (正式な公開) を「本番で使える・皆が使うべきもの」として扱っている
+  - Pantheon の記事は題名が「… for Libraries using SemVer」で、ライブラリ向け
+- 要約だけで読んだもの (判断には使っていない): Rocket.Chat 1.0 は「思い描いた機能が揃った最初の版」、Mattermost 1.0 は「Slack と互換・セルフホストできる」
+- 推測: 人が使うアプリでは 1.0 に共通の意味は無く、各アプリが決めている (例は少なく、偏っているかもしれない)。
+  このアプリでは版番号が見えるので、0.x は「試作」と読まれている可能性がある (利用者の受け取り方は確かめていない)
+- 出典: semver.org、pantheon.io「Don't Fear the 1.0」、runway.team「how-why-mobile-app-versioning」、photoroom.com「year-week-iteration」、
+  simpmusic.org「why-i-changed-the-version-from-v0-to-v1」、newpipe.net (0.27.6 の告知)、element.io (Ignition・deep dive)。原文はすべて 2026-11-14 に読んだ
