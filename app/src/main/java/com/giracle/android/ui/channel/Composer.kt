@@ -371,6 +371,8 @@ fun Composer(
         // 送信中にログアウトしたら、後始末 (送信待ち・下書き・ショートカットへの書き込み) をしない。
         // 前のアカウントの本文が残り、次のアカウントで送られるのを防ぐ (ログアウトでストアが作り直される)
         val sessionStore = graph.store
+        // 送信待ちに入れるときのユーザー。押した時点で読む (失敗の後だと、ログアウトで消えていることがある、#74)
+        val sessionUser = sessionStore.me.value?.id ?: graph.prefs.userId
         graph.scope.launch(Dispatchers.Main.immediate) {
             try {
                 val sent = store.send(channelId, body, ids, reply)
@@ -387,7 +389,7 @@ fun Composer(
                 if (graph.store !== sessionStore) return@launch
                 if (Outbox.isNetworkFailure(e)) {
                     // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
-                    graph.outbox.add(channelId, body, ids, reply, userId = sessionStore.me.value?.id)
+                    graph.outbox.add(channelId, body, ids, reply, userId = sessionUser)
                     Drafts.finishSend(appCtx, channelId)
                     appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
@@ -543,7 +545,9 @@ private class ProgressBody(private val inner: okhttp3.RequestBody, private val o
 private fun OutboxBar(channelId: String) {
     val graph = LocalGraph.current
     val all by graph.outbox.items.collectAsStateWithLifecycle()
-    val items = remember(all, channelId) { all.filter { it.channelId == channelId } }
+    val me by LocalStore.current.me.collectAsStateWithLifecycle()
+    // 前のアカウントで入れたものは出さない (送るときにも捨てる、#74)
+    val items = remember(all, channelId, me) { all.filter { it.channelId == channelId && (it.userId == null || me == null || it.userId == me?.id) } }
     if (items.isEmpty()) return
     Column(Modifier.fillMaxWidth().testTag(TestTags.COMPOSER_OUTBOX)) {
         for (item in items) {

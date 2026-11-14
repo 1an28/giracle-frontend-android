@@ -29,6 +29,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
         graph.scope.launch {
             try {
                 val store = graph.store
+                // 送信待ちに入れるときのユーザー。返信した時点で読む (送信の失敗の後だと、ログアウトで消えていることがある、#74)
+                val replyUser = store.me.value?.id ?: graph.prefs.userId
                 if (intent.action == ACTION_REPLY && !reply.isNullOrEmpty()) {
                     // 返信した会話の通知は残す (#38)。この後に既読時刻が進んでも、既読による消去 (#49) の対象にしない
                     Notifier.keepAfterReply(channelId)
@@ -37,7 +39,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     } catch (e: Exception) {
                         if (!Outbox.isNetworkFailure(e)) throw e
                         // 電波が無いときは送信待ちに入れ、次につながったときに送る (#30)
-                        graph.outbox.add(channelId, reply, emptyList(), messageId, userId = store.me.value?.id ?: graph.prefs.userId)
+                        graph.outbox.add(channelId, reply, emptyList(), messageId, userId = replyUser)
                         Notifier.postError(context, "返信を送信待ちにしました", tag, "次にアプリがつながったときに送ります")
                         return@launch
                     }
