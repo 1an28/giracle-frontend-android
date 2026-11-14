@@ -37,7 +37,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     } catch (e: Exception) {
                         if (!Outbox.isNetworkFailure(e)) throw e
                         // 電波が無いときは送信待ちに入れ、次につながったときに送る (#30)
-                        graph.outbox.add(channelId, reply, emptyList(), messageId)
+                        graph.outbox.add(channelId, reply, emptyList(), messageId, userId = store.me.value?.id ?: graph.prefs.userId)
                         Notifier.postError(context, "返信を送信待ちにしました", tag, "次にアプリがつながったときに送ります")
                         return@launch
                     }

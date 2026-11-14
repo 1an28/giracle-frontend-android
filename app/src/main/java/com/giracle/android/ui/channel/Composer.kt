@@ -387,7 +387,7 @@ fun Composer(
                 if (graph.store !== sessionStore) return@launch
                 if (Outbox.isNetworkFailure(e)) {
                     // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
-                    graph.outbox.add(channelId, body, ids, reply)
+                    graph.outbox.add(channelId, body, ids, reply, userId = sessionStore.me.value?.id)
                     Drafts.finishSend(appCtx, channelId)
                     appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
