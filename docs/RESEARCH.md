@@ -131,3 +131,17 @@
   このアプリでは版番号が見えるので、0.x は「試作」と読まれている可能性がある (利用者の受け取り方は確かめていない)
 - 出典: semver.org、pantheon.io「Don't Fear the 1.0」、runway.team「how-why-mobile-app-versioning」、photoroom.com「year-week-iteration」、
   simpmusic.org「why-i-changed-the-version-from-v0-to-v1」、newpipe.net (0.27.6 の告知)、element.io (Ignition・deep dive)。原文はすべて 2026-11-14 に読んだ
+
+### 圏外の後に通信が固まるのは、このアプリだけか (#101)
+- 入り口: #101 で「圏外の間に始めた WebSocket の試みが固まった」と推測したまま直した (D-064)。固まり方は OkHttp や Android でよく知られたものか、自分の作りの問題かを疑った
+- 確かめたこと (原文を読んだ):
+  - OkHttp の Issue #3278 (https://github.com/square/okhttp/issues/3278、「Network calls hang after coming back online after being offline」)。
+    機内モードなどで圏外になり、つながり直した後に通信が固まる・時間切れになる報告が、主に Android のエミュレータで、一部は実機でも集まっている。
+    保守者は「Android のエミュレータのネットワークは混乱していて、きれいには直せない」とし、OkHttp の外の問題と見ている。
+    対策として保守者が挙げたのは「Android の回線の変化を購読する」こと (OkHttp では実装していない)。2025-08 にライブラリの直し無しで閉じられた
+  - 同じ Issue で挙がった回避: 圏外の前の接続が使い回しの溜まり (connection pool) に残って古くなり、それを使うと固まる。
+    つながり直した直後に 2 秒ほど置く、HTTP/1.1 に限る、時間の上限を付ける、などが報告されている (どれも一部の人に効いた、という報告)
+  - OkHttp の Issue #5328 (Pixel 3 の機内モードで connectTimeout が効かない) は、VPN が手元の代理として接続を受けていたのが原因だった。今回とは別
+- 推測: #101 の固まりは、#3278 と同じエミュレータの振る舞いの可能性が高い。D-064 (回線の復帰で固まった試みを捨てる・見張り) は、保守者が挙げた方向と同じ
+- 残りの隙間 (推測): 回線が戻ったときに、HTTP の使い回しの溜まりを空にしていない。圏外の前の古い接続を HTTP の取得が使うと、#3278 と同じ形で固まりうる。
+  e2e で HTTP の取得が固まった記録はまだ無い。次に起きたら、`connectionPool.evictAll()` を回線の復帰で呼ぶかを考える (ROADMAP に置く)
