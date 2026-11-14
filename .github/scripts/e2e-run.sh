@@ -107,7 +107,7 @@ show_clues() {
   fi
   # 送信待ち・接続・再同期の記録 (#101)。上の 2 つは最後の行だけなので、前半のテストの記録が押し出される。タグで絞って全部出す
   echo "::group::送信待ち・接続・再同期 (Outbox・GiracleWs・GiracleSync・GiracleNav)"
-  grep -E " (Outbox|GiracleWs|GiracleSync|GiracleNav): |TestRunner: (started|finished)|GiracleE2E: E2E-RESULT (offline|outbox|lan)" "$OUT/logcat.txt" | tail -n 300
+  grep -E " (Outbox|GiracleWs|GiracleSync|GiracleNav) *: |TestRunner: (started|finished)|GiracleE2E: E2E-RESULT (offline|outbox|lan)" "$OUT/logcat.txt" | tail -n 300
   echo "::endgroup::"
   echo "::group::プッシュ通知の受信 (UnifiedPush・Play 開発者サービス)"
   grep -E "GiraclePush|UnifiedPush|UP-|FirebaseReceiver|GCM|FCM" "$OUT/logcat.txt" | tail -n 80
