@@ -286,7 +286,10 @@ class UiScreenshotTest {
         assumeTrue(server != null)
         val ch = newChannel("pane")
         val ids = (1..40).map { send(ch, "表示位置の確認 $it") }
-        val old = ids[4] // 古いほう。開いた直後 (最新が見える位置) には描かれない
+        // 古いほう。開いた直後 (最新が見える位置) には描かれないが、最初に読み込む 30 件 (ids[10]〜) には入っている。
+        // 30 件より古いもの (以前は ids[4]) を使うと、古い側の続きの読み込みが間に合わずに端に着き、
+        // performScrollToNode が見つけられずに落ちることがあった (#88)。確かめたいのは幅を変えても表示位置が残ることなので、続きの読み込みは要らない
+        val old = ids[12]
         val size = mutableStateOf(androidx.compose.ui.unit.DpSize(1024.dp, 768.dp))
 
         startApp(size)
