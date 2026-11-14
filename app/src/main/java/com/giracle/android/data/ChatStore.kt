@@ -156,13 +156,17 @@ class ChatStore(
      */
     private fun applyFetched(channelId: String, flow: MutableStateFlow<HistoryState>, state: HistoryState) {
         flow.value = state
-        val arrived = arrivedWhileFetching.remove(channelId)?.let { synchronized(it) { it.toList() } }.orEmpty()
-        if (!state.atEnd || arrived.isEmpty()) return
-        flow.update { s ->
-            val ids = s.messages.mapTo(HashSet()) { it.id }
-            val extra = arrived.filter { it.id !in ids }.distinctBy { it.id }.sortedByDescending { it.createdAt }
-            if (extra.isEmpty()) s else s.copy(messages = extra + s.messages, version = s.version + 1)
+        if (state.atEnd) {
+            flow.update { s ->
+                // 控えは更新の中で読む (間に削除の知らせが来たら、やり直しで最新の控えを読む)
+                val arrived = arrivedWhileFetching[channelId]?.let { synchronized(it) { it.toList() } }.orEmpty()
+                val ids = s.messages.mapTo(HashSet()) { it.id }
+                val extra = arrived.filter { it.id !in ids }.distinctBy { it.id }
+                // 間に一覧へ直接入った新着もあるので、先頭に付けるだけでなく作成時刻で並べる (同じ時刻は今の順を保つ)
+                if (extra.isEmpty()) s else s.copy(messages = (extra + s.messages).sortedByDescending { it.createdAt }, version = s.version + 1)
+            }
         }
+        arrivedWhileFetching.remove(channelId)
     }
 
     // ------------------------------------------------------------------
