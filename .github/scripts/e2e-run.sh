@@ -25,7 +25,7 @@ set -e
 "$ADB" install -r "$APP_APK"
 "$ADB" install -r -t "$TEST_APK"
 "$ADB" shell pm list instrumentation
-# 送信を押した直後のスタックと描画の間隔を記録させる (SendTrace.profileAfterTap、#70、D-067)。利用者の端末では付かない
+# 送信を押した直後のスタックと描画の間隔を記録させる (SendTrace.profileAfterTap、#70、D-068)。利用者の端末では付かない
 "$ADB" shell setprop log.tag.GiraclePerfTrace VERBOSE
 set +e
 # logcat の入れ物 (エミュレータは 2M) は、実行の間にあふれて古い行が消える (#81)。
@@ -138,7 +138,7 @@ grep -oE "E2E-RESULT ux net=.*" "$OUT/logcat.txt" | sed "s/E2E-RESULT ux //"
 # 手がかり: 再同期・スナップショットからの復元・アプリのプロセスの起動 (つなぎ直した後の切り替えの値を読むため)・送信の区切り (GiraclePerf、#70)
 grep -E " I GiracleSync: | I GiraclePerf: | I GiracleE2E: E2E-RESULT ux|ActivityManager: Start proc [0-9]+:$APP_PKG" "$OUT/logcat.txt" | tail -n 60
 echo "::endgroup::"
-# 送信を押した直後の描画の間隔と、メイン・Default のスレッドのスタック (#70、D-067)。R8 の名前を mapping.txt で元に戻して出す
+# 送信を押した直後の描画の間隔と、メイン・Default のスレッドのスタック (#70、D-068)。R8 の名前を mapping.txt で元に戻して出す
 echo "::group::送信を押した直後のスレッドのスタック (GiraclePerfTrace)"
 MAPPING=app/build/outputs/mapping/release/mapping.txt
 RETRACE=$(ls -d "$SDK"/cmdline-tools/*/bin/retrace 2>/dev/null | sort -V | tail -1)

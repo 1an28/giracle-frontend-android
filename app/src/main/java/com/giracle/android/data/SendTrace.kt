@@ -16,7 +16,7 @@ object SendTrace {
     const val TAG = "GiraclePerf"
 
     /**
-     * 送信を押した直後に何がスレッドを塞いでいるかの記録 (D-067)。
+     * 送信を押した直後に何がスレッドを塞いでいるかの記録 (D-068)。
      * `adb shell setprop log.tag.GiraclePerfTrace VERBOSE` のときだけ動く (e2e が付ける。利用者の端末では動かない)
      */
     const val PROFILE_TAG = "GiraclePerfTrace"
