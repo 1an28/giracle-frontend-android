@@ -150,13 +150,19 @@ class ChatStore(
     /** 取り直しの間に届いた新着を控え始める */
     private fun beginFetch(channelId: String) { arrivedWhileFetching[channelId] = java.util.Collections.synchronizedList(mutableListOf()) }
 
-    /** 控えを終える。最新側まで取れた結果なら、間に届いた新着のうち結果に無いものを先頭 (新しい側) に足す */
-    private fun endFetch(channelId: String, state: HistoryState): HistoryState {
+    /**
+     * 取り直しの結果を一覧に入れ、控えを終える。最新側まで取れた結果なら、間に届いた新着のうち一覧に無いものを先頭 (新しい側) に足す。
+     * 先に結果を入れてから控えを外す。逆の順だと、外してから入れるまでの間に届いた新着が、古い一覧に足されて結果で上書きされる (#84 のレビュー)
+     */
+    private fun applyFetched(channelId: String, flow: MutableStateFlow<HistoryState>, state: HistoryState) {
+        flow.value = state
         val arrived = arrivedWhileFetching.remove(channelId)?.let { synchronized(it) { it.toList() } }.orEmpty()
-        if (!state.atEnd || arrived.isEmpty()) return state
-        val ids = state.messages.mapTo(HashSet()) { it.id }
-        val extra = arrived.filter { it.id !in ids }.distinctBy { it.id }.sortedByDescending { it.createdAt }
-        return if (extra.isEmpty()) state else state.copy(messages = extra + state.messages)
+        if (!state.atEnd || arrived.isEmpty()) return
+        flow.update { s ->
+            val ids = s.messages.mapTo(HashSet()) { it.id }
+            val extra = arrived.filter { it.id !in ids }.distinctBy { it.id }.sortedByDescending { it.createdAt }
+            if (extra.isEmpty()) s else s.copy(messages = extra + s.messages, version = s.version + 1)
+        }
     }
 
     // ------------------------------------------------------------------
@@ -386,9 +392,8 @@ class ChatStore(
                     mergeSizes(newer.imageDimensions)
                     state = state.copy(messages = mergeNewer(state.messages, newer.history), atEnd = newer.atEnd)
                 }
-                state = endFetch(channelId, state)
-                flow.value = state
-                state.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
+                applyFetched(channelId, flow, state)
+                flow.value.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
             } finally {
                 arrivedWhileFetching.remove(channelId)
             }
@@ -419,9 +424,8 @@ class ChatStore(
             try {
                 val r = api.history(channelId, fetchLength = 30, direction = "older")
                 mergeSizes(r.imageDimensions)
-                val state = endFetch(channelId, HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1))
-                flow.value = state
-                state.messages.forEach { ensureUser(it.userId) }
+                applyFetched(channelId, flow, HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1))
+                flow.value.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
             } finally {
                 arrivedWhileFetching.remove(channelId)
             }
