@@ -558,6 +558,7 @@ class ChatStore(
     /** 送ったメッセージを返す (画面が、送ったものを見える位置へ送るため。#58) */
     suspend fun send(channelId: String, text: String, fileIds: List<String>, replyTo: String?): Message {
         val msg = api.send(channelId, text, fileIds, replyTo)
+        SendTrace.mark("main_resumed") // 応答の解析の後、呼んだ側 (画面ならメインスレッド) に戻った時点 (#70)
         // WS より先に応答が来た場合でも即座に表示する (重複は addMessage で除く)
         addMessage(msg)
         return msg
@@ -722,6 +723,7 @@ class ChatStore(
     private fun onNewMessage(m: Message) {
         val myId = me.value?.id
         val viewing = currentChannelId == m.channelId && appInForeground
+        if (m.userId == myId) SendTrace.mark("ws_arrived", "id=${m.id}")
         addMessage(m)
         ensureUser(m.userId)
         if (m.userId == myId) {
