@@ -88,7 +88,7 @@ class ReleaseAppTest {
         // 5. 送信: 画面に出て、サーバーにも届いている
         val sent = "送信テスト $suffix"
         wait(res("composer.input"), 10_000, "入力欄").apply { click(); text = sent }
-        wait(res("composer.send"), 5_000, "送信ボタン").click()
+        clickSendChecked(sent)
         // 入力欄の文字に当たらないよう、メッセージの一覧の中だけで探す (入力欄に残ったままでも通っていた)
         wait(res("channel.messages").hasDescendant(By.textContains(sent)), 15_000, "自分の送信 (一覧の中)")
         waitFor("サーバーに送信が届く") { admin.recentTexts(channelId).contains(sent) }
@@ -731,6 +731,34 @@ class ReleaseAppTest {
         shot("timeout")
         dumpUi("「$what」が満たされない")
         fail("$what (${timeoutMs / 1000} 秒待った)")
+    }
+
+    /**
+     * 送信ボタンを押し、入力欄が空になる (アプリが送信を受け付けた) ことを確かめる。
+     * #94: 押しても入力欄に残ったままになることが、この PR の CI で 2 回あった (送信ボタンは押せる状態だった)。
+     * 原因を切り分けるため、押す前後のボタンの位置・キーボードの状態を記録し、受け付けられなければ 1 回だけ押し直す。
+     * 押し直したことは E2E-RESULT send_tap_retry として残し、e2e-run.sh が警告にする (見えなくしない)
+     */
+    private fun clickSendChecked(text: String) {
+        val btn = wait(res("composer.send"), 5_000, "送信ボタン")
+        val before = btn.visibleBounds
+        btn.click()
+        if (waitInputCleared(text, 3_000)) return
+        val after = device.findObject(res("composer.send"))?.visibleBounds
+        val ime = shell("dumpsys input_method").contains("mInputShown=true")
+        Log.w(TAG, "E2E-RESULT send_tap_retry before=$before after=$after ime_shown=$ime")
+        dumpUi("送信ボタンを押しても入力欄が空にならない")
+        wait(res("composer.send"), 5_000, "送信ボタン (押し直し)").click()
+        if (!waitInputCleared(text, 5_000)) fail("送信ボタンを 2 回押しても、送信を受け付けない (入力欄に残ったまま)")
+    }
+
+    private fun waitInputCleared(text: String, timeoutMs: Long): Boolean {
+        val end = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < end) {
+            if (device.findObject(res("composer.input"))?.text?.contains(text) != true) return true
+            SystemClock.sleep(200)
+        }
+        return false
     }
 
     /** 失敗したときの手がかり: 画面の要素 (testTag・文字・押せるか) を logcat に出す。e2e-run.sh が CI のログに出す */

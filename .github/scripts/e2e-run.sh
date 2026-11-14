@@ -148,6 +148,10 @@ if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT offline_star
   echo "::error::電波が無いときの起動の確認 (offlineColdStart) が最後まで動いていない (飛ばされた?)"
   status=1
 fi
+# 送信ボタンを押し直した回 (#94)。通っても見えるように警告にする
+if grep -q "E2E-RESULT send_tap_retry" "$OUT/logcat.txt"; then
+  echo "::warning::送信ボタンを押しても受け付けられず、押し直した (#94)。$(grep -oE 'E2E-RESULT send_tap_retry .*' "$OUT/logcat.txt" | head -1)"
+fi
 # 電波が無いときの起動 (#82、P-2)。前回の内容が見え続けるか・電波が戻ったら操作なしで最新になるか
 echo "::group::電波が無いときの起動 (offline_start)"
 grep -oE "E2E-RESULT offline_start .*" "$OUT/logcat.txt" | sed "s/E2E-RESULT //"
