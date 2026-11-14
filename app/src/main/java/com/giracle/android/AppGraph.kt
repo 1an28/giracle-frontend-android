@@ -216,12 +216,18 @@ class AppGraph(context: Context) {
         job = scope.launch {
             try {
                 before?.join() // 前回の内容を出し終えてから最新に置き換える (逆になると古い内容で上書きされる)
-                do {
-                    loadSession(userId)
-                } while ((_phase.value as? AppPhase.SignedIn)?.error != null && retryAfterLoad.getAndSet(false))
+                loadSession(userId)
             } finally {
-                // ログアウトで取り消された古い読み込みが、後から始めた読み込みの印を消さないようにする
-                synchronized(this@AppGraph) { if (loadJob === job) _loading.value = false }
+                // 「動いている」をやめることと、最中に来たきっかけでやり直すかの判断を、同じロックの中で行う。
+                // 分けると、判断の後・終わる前に来たきっかけが、終わりかけの読み込みに付いたまま捨てられる (レビューで見つけた)。
+                // ログアウトで取り消された古い読み込みは、後から始めた読み込みの印を消さない (loadJob === job)
+                val again = synchronized(this@AppGraph) {
+                    if (loadJob !== job) return@synchronized false
+                    loadJob = null
+                    _loading.value = false
+                    retryAfterLoad.getAndSet(false) && !job.isCancelled && (_phase.value as? AppPhase.SignedIn)?.error != null
+                }
+                if (again) startLoad(userId)
             }
         }
         loadJob = job
