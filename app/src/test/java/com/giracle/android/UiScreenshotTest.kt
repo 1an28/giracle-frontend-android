@@ -285,7 +285,9 @@ class UiScreenshotTest {
     @Test @Config(qualifiers = "w1024dp-h768dp-mdpi") fun twoPaneKeepsScrollPosition() {
         assumeTrue(server != null)
         val ch = newChannel("pane")
-        val ids = (1..40).map { send(ch, "表示位置の確認 $it") }
+        // 3 行にして 1 件の高さを増やす。1 行だと、読み込んだ 30 件のほとんどが開いた直後の画面に収まり、
+        // 下の old が描かれてしまう (#111 の live で確かめた)
+        val ids = (1..40).map { send(ch, "表示位置の確認 $it\n2 行目\n3 行目") }
         // 古いほう。開いた直後 (最新が見える位置) には描かれないが、最初に読み込む 30 件 (ids[10]〜) には入っている。
         // 30 件より古いもの (以前は ids[4]) を使うと、古い側の続きの読み込みが間に合わずに端に着き、
         // performScrollToNode が見つけられずに落ちることがあった (#88)。確かめたいのは幅を変えても表示位置が残ることなので、続きの読み込みは要らない
