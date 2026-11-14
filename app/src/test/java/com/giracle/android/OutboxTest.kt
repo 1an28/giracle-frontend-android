@@ -42,7 +42,7 @@ class OutboxTest {
 
     @Test fun sendsInOrderAndKeepsAcrossRestart() = runBlocking {
         val f = File(dir, "ob1.json").also { it.delete() }
-        Outbox(f).apply { add("c", "1", emptyList(), null); add("c", "2", emptyList(), null) }
+        Outbox(f).apply { add("c", "1", emptyList(), null, userId = null); add("c", "2", emptyList(), null, userId = null) }
         val ob = Outbox(f) // 作り直しても残っている (アプリを閉じても残る)
         assertEquals(2, ob.items.value.size)
         val s = FakeSender()
@@ -54,7 +54,7 @@ class OutboxTest {
 
     @Test fun stopsWhileOffline() = runBlocking {
         val ob = newOutbox("ob2.json")
-        ob.add("c", "1", emptyList(), null); ob.add("c", "2", emptyList(), null)
+        ob.add("c", "1", emptyList(), null, userId = null); ob.add("c", "2", emptyList(), null, userId = null)
         val s = FakeSender(fail = IOException("offline"))
         assertEquals(0, ob.flush(s))
         assertEquals(2, ob.items.value.size)
@@ -63,7 +63,7 @@ class OutboxTest {
 
     @Test fun serverRejectionIsKeptWithReasonAndNotRetried() = runBlocking {
         val ob = newOutbox("ob3.json")
-        val item = ob.add("c", "1", emptyList(), null)
+        val item = ob.add("c", "1", emptyList(), null, userId = null)
         assertEquals(0, ob.flush(FakeSender(fail = ApiException(404, "Channel not found"))))
         assertNotNull(ob.items.value.single().error)
         // 自動の送り直しでは送らない
@@ -78,7 +78,7 @@ class OutboxTest {
     @Test fun skipsWhenAlreadyDelivered() = runBlocking {
         val ob = newOutbox("ob4.json")
         val now = System.currentTimeMillis()
-        ob.add("c", "hello", emptyList(), null, now = now)
+        ob.add("c", "hello", emptyList(), null, userId = null, now = now)
         val delivered = Message(id = "m", channelId = "c", userId = "me", content = "hello", createdAt = Instant.ofEpochMilli(now + 1000).toString())
         val s = FakeSender(recentMessages = listOf(delivered))
         assertEquals(1, ob.flush(s))
@@ -123,8 +123,8 @@ class OutboxTest {
     @Test fun oneDeliveredMessageMatchesOnlyOneItem() = runBlocking {
         val ob = newOutbox("ob5.json")
         val now = System.currentTimeMillis()
-        ob.add("c", "了解", emptyList(), null, now = now)
-        ob.add("c", "了解", emptyList(), null, now = now + 1)
+        ob.add("c", "了解", emptyList(), null, userId = null, now = now)
+        ob.add("c", "了解", emptyList(), null, userId = null, now = now + 1)
         val delivered = Message(id = "m", channelId = "c", userId = "me", content = "了解", createdAt = Instant.ofEpochMilli(now + 1000).toString())
         val s = FakeSender(recentMessages = listOf(delivered))
         assertEquals(2, ob.flush(s))
@@ -140,8 +140,8 @@ class OutboxTest {
         val f = File(dir, "ob6.json").also { it.delete(); File(it.path + ".used").delete() }
         val ob = Outbox(f)
         val now = System.currentTimeMillis()
-        val a = ob.add("c", "了解", emptyList(), null, now = now)
-        ob.add("c", "了解", emptyList(), null, now = now + 1)
+        val a = ob.add("c", "了解", emptyList(), null, userId = null, now = now)
+        ob.add("c", "了解", emptyList(), null, userId = null, now = now + 1)
         var calls = 0
         val first = object : Outbox.Sender {
             override suspend fun send(item: OutboxItem): String {
@@ -168,7 +168,7 @@ class OutboxTest {
         val keep = 200
         val drop = 100
         val added = (0 until keep + drop).map { i ->
-            async(Dispatchers.IO) { ob.add("c", "m$i", emptyList(), null) }
+            async(Dispatchers.IO) { ob.add("c", "m$i", emptyList(), null, userId = null) }
         }.awaitAll()
         added.takeLast(drop).map { item -> async(Dispatchers.IO) { ob.remove(item.localId) } }.awaitAll()
         assertEquals(keep, ob.items.value.size)
@@ -181,7 +181,7 @@ class OutboxTest {
     @Test fun clearRemovesFile() = runBlocking {
         val f = File(dir, "ob6.json").also { it.delete() }
         val ob = Outbox(f)
-        ob.add("c", "1", emptyList(), null)
+        ob.add("c", "1", emptyList(), null, userId = null)
         assertTrue(f.exists())
         ob.clear()
         assertFalse(f.exists())
@@ -193,5 +193,17 @@ class OutboxTest {
         assertTrue(Outbox.isNetworkFailure(java.net.SocketTimeoutException()))
         assertFalse(Outbox.isNetworkFailure(ApiException(400, "bad")))
         assertFalse(Outbox.isNetworkFailure(IllegalStateException()))
+    }
+
+    /** 前のアカウントで入れたものは、別のユーザーとして送らずに捨てる (#74) */
+    @Test fun dropsItemsOfAnotherAccount() = runBlocking {
+        val ob = newOutbox("other-account.json")
+        ob.add("c", "前のアカウント", emptyList(), null, userId = "someone-else")
+        ob.add("c", "自分", emptyList(), null, userId = "me")
+        ob.add("c", "古い保存 (ユーザー不明)", emptyList(), null, userId = null)
+        val s = FakeSender()
+        assertEquals(2, ob.flush(s))
+        assertEquals(listOf("自分", "古い保存 (ユーザー不明)"), s.sent)
+        assertTrue(ob.items.value.isEmpty())
     }
 }
