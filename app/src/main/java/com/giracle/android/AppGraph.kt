@@ -81,6 +81,8 @@ class AppGraph(context: Context) {
     /** 送信待ちを送る。[only] を指定したらそれだけ (利用者が「今すぐ送る」を選んだとき) */
     fun flushOutbox(only: String? = null) {
         if (_phase.value !is AppPhase.SignedIn || outbox.items.value.isEmpty()) return
+        // 送り直しのきっかけを記録する (e2e の失敗の手がかり、#101)
+        android.util.Log.i("Outbox", "flush requested: items=${outbox.items.value.size} only=${only != null}")
         scope.launch { outbox.flush(outboxSender, only) }
     }
 

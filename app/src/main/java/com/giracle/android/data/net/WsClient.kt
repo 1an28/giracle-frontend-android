@@ -97,6 +97,7 @@ class WsClient(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (webSocket !== socket) return
             attempts = 0
+            Log.i(TAG, "connected") // 送信待ちの送り直しのきっかけ (#101)
             _state.value = State.Connected
             if (everConnected) _reconnects.value += 1
             everConnected = true

@@ -102,12 +102,14 @@ class Outbox(file: File) {
                     markUsed(delivered.id)
                 } else {
                     markUsed(sender.send(item))
+                    Log.i(TAG, "sent: ${item.localId}")
                 }
                 remove(item.localId)
                 done++
             } catch (e: ApiException) {
-                if (e.isUnauthorized) break
+                if (e.isUnauthorized) { Log.i(TAG, "unauthorized: ${item.localId}"); break }
                 // サーバーに断られた (削除されたチャンネルなど)。自動では送り直さず、利用者に選んでもらう
+                Log.i(TAG, "rejected: ${item.localId} HTTP ${e.code}")
                 _items.update { l -> l.map { if (it.localId == item.localId) it.copy(error = e.body.take(200).ifBlank { "HTTP ${e.code}" }) else it } }
                 save()
             } catch (e: IOException) {
