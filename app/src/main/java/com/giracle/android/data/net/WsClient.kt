@@ -61,8 +61,14 @@ class WsClient(
     private var watchdogJob: Job? = null
     private var attempts = 0
     private var everConnected = false
+    /**
+     * 接続の状態 (socket・state・つなぎ直し) を変える処理をまとめて守る (#107)。
+     * 呼ぶのはメインスレッド (start・stop・nudge)・アプリの scope (つなぎ直し・見張り)・OkHttp のスレッド (通知) で、
+     * 以前は待ち時間の後のつなぎ直しと nudge が重なると、試みが 2 つ走り、古い方が閉じられずに残りえた
+     */
+    private val lock = Any()
 
-    fun start() {
+    fun start(): Unit = synchronized(lock) {
         wanted = true
         if (socket == null && _state.value != State.Connecting) {
             retryJob?.cancel()
@@ -71,7 +77,7 @@ class WsClient(
         }
     }
 
-    fun stop() {
+    fun stop(): Unit = synchronized(lock) {
         wanted = false
         retryJob?.cancel()
         pingJob?.cancel()
@@ -86,7 +92,7 @@ class WsClient(
      * 接続中のまま [staleConnectMs] より経った試みも捨ててやり直す。圏外の間に始めた試みが固まり、
      * 電波が戻っても「接続中」のまま再接続されず、送信待ちが送られないことがあった (#101、e2e の記録で確かめた)
      */
-    fun nudge() {
+    fun nudge(): Unit = synchronized(lock) {
         if (!wanted) return
         val stale = _state.value == State.Connecting && System.nanoTime() / 1_000_000 - openedAt > staleConnectMs
         if (_state.value == State.Disconnected || stale) {
@@ -101,7 +107,10 @@ class WsClient(
         }
     }
 
+    /** [lock] の中で呼ぶ */
     private fun open() {
+        // 前の試みが残っていたら閉じる (2 つ走らせない、#107)。外した後の通知は socket !== で無視される
+        socket?.let { old -> socket = null; old.cancel() }
         val ep = endpointProvider()
         Log.i(TAG, "opening (attempt $attempts)")
         openedAt = System.nanoTime() / 1_000_000
@@ -116,6 +125,7 @@ class WsClient(
         watchdogJob?.cancel()
         watchdogJob = scope.launch {
             delay(connectWatchdogMs)
+            synchronized(lock) {
             if (socket === s && _state.value == State.Connecting) {
                 // 先に外してから取り消す。取り消しの通知 (onFailure) を待たない:
                 // 名前解決の途中などでは、取り消しても通知がすぐには来ないため (外した後の通知は socket !== s で無視される)
@@ -124,6 +134,7 @@ class WsClient(
                 s.cancel()
                 _state.value = State.Disconnected
                 scheduleRetry()
+            }
             }
         }
     }
@@ -136,12 +147,12 @@ class WsClient(
         retryJob?.cancel()
         retryJob = scope.launch {
             delay(backoff + Random.nextLong(500))
-            if (wanted && socket == null) open()
+            synchronized(lock) { if (wanted && socket == null) open() }
         }
     }
 
     private inner class Listener : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) {
+        override fun onOpen(webSocket: WebSocket, response: Response): Unit = synchronized(lock) {
             if (webSocket !== socket) return
             attempts = 0
             Log.i(TAG, "connected") // 送信待ちの送り直しのきっかけ (#101)
@@ -181,17 +192,19 @@ class WsClient(
             Log.w(TAG, "ws failure: ${t.message} (${response?.code})")
             if (response?.code == 403 || response?.code == 401) {
                 // Origin 不一致やトークン無効。再接続しても直らない
-                if (webSocket === socket) {
-                    socket = null
-                    pingJob?.cancel()
-                    _state.value = State.AuthError
+                synchronized(lock) {
+                    if (webSocket === socket) {
+                        socket = null
+                        pingJob?.cancel()
+                        _state.value = State.AuthError
+                    }
                 }
                 return
             }
             onEnd(webSocket)
         }
 
-        private fun onEnd(webSocket: WebSocket) {
+        private fun onEnd(webSocket: WebSocket): Unit = synchronized(lock) {
             if (webSocket !== socket) return
             socket = null
             pingJob?.cancel()
