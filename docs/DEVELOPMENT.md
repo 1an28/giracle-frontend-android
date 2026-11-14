@@ -132,10 +132,17 @@ python3 devtools/push-e2e.py          # 登録 → メンション → 受信 �
    - それ以外の競合 (ROADMAP.md など) は手で直す。追記どうしは両方残し、書き換えどうしは両方の意図を合わせる
    - union は自分の追記を先に置くので、番号の順が前後することがある。並べ直す
    - 判断の番号が重なっていたら、自分の方を付け直す (本文・コミット以外の文書・PR の説明の参照も)
-   - 取り込んで push したら 2. に戻り、CI が通るのを確かめる
+   - 取り込む前に、待つ CI を決めるための材料を取っておく (D-058):
+     `B=$(git merge-base HEAD origin/main)`、PR の変更 `git diff --name-only $B HEAD`、取り込む main の変更 `git diff --name-only $B origin/main`
+   - 取り込んで push したら、待つ CI を決める:
+     - 両方に、`docs/` 以外で同じファイルがあれば、2. に戻り CI 全部が通るのを確かめる
+     - 無ければ、docs-check (判断の番号の重なり) が通るのを待つだけでよい。ほかの CI は、取り込む前のコミットで通っていればよい
+     - 違うファイルどうしでも壊れることはある (片方が名前を変え、もう片方が古い名前で使うなど)。まれと見て、マージ後の main の CI で見つける
 4. **マージ**: 直前にもう一度 `git fetch origin main` し、3. で取り込んだ main から進んでいないことを確かめる (進んでいたら 3. に戻る)。
-   GitHub の MCP の `merge_pull_request` に、CI が通ったコミットを `expectedHeadSha` として渡してマージする
-   (これは PR の head しか比べず、main が進んだかは見ない)。マージ後、main の docs-check が通ったことを見てから終える。
+   GitHub の MCP の `merge_pull_request` に、3. で確かめたコミットを `expectedHeadSha` として渡してマージする
+   (これは PR の head しか比べず、main が進んだかは見ない)。マージ後、main の CI を見てから終える。
+   main の CI が落ちたら、Issue にして新しいセッションに最優先で渡す (1 セッション 1 PR、D-050)。取り込み直しで CI を省いた組み合わせは、main で初めて全部確かめられるため。
+   リリースは、main の CI が全部通っているときだけ出す。
 
 ## 構成
 
