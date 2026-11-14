@@ -242,6 +242,8 @@ class AppGraph(context: Context) {
             // ログアウトで取り消されていたら、前のユーザーの状態を書き戻さない (取り消しは次の中断点まで効かないため)
             currentCoroutineContext().ensureActive()
             _phase.value = AppPhase.SignedIn(userId, ready = true)
+            // サーバーに届くと分かったので、送信待ちも送る。WebSocket がつながらなくても送れるように (#101)
+            flushOutbox()
             // 開いているチャンネルが前回の内容のまま (圏外で開いて取り直せなかった) なら、ここで最新にする (#82)
             store.refreshOpenChannel()
         } catch (e: ApiException) {
