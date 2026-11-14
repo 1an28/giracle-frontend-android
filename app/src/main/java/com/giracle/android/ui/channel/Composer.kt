@@ -312,6 +312,7 @@ fun Composer(
             }
             return
         }
+        com.giracle.android.data.SendTrace.mark("tap")
         val ids = attachments.mapNotNull { it.fileId }
         val reply = replyTo?.id
         // 送信前に入力欄を空にして、すぐ次を打てるようにする (失敗したら戻す)
@@ -330,6 +331,7 @@ fun Composer(
         graph.scope.launch(Dispatchers.Main.immediate) {
             try {
                 val sent = store.send(channelId, body, ids, reply)
+                com.giracle.android.data.SendTrace.mark("http_done", "id=${sent.id}")
                 if (graph.store !== sessionStore) return@launch
                 latestOnSent(sent.id)
                 // 共有シート・ランチャーに、このチャンネルを直接の送り先として出す (#25)
