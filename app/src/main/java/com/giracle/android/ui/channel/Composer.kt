@@ -183,13 +183,20 @@ fun Composer(
     // 送信はアプリの scope で続くので、終わったときに最新の知らせ先を呼ぶ
     val latestOnSent by rememberUpdatedState(onSent)
 
-    // 編集モードに入ったら本文を差し替える
-    LaunchedEffect(editing?.id) {
-        if (editing != null) state.setTextAndPlaceCursorAtEnd(editing.content)
-    }
-    LaunchedEffect(state, editing) {
+    // 編集の間、入力欄は編集している本文になる。抜けたら (保存・取り消し・返信への切り替え) 下書きに戻す (#92)。
+    // 戻すのと下書きの記録を同じ効果にまとめ、戻す前に編集の本文で下書きを上書きしないようにする
+    val wasEditing = remember(state) { booleanArrayOf(false) }
+    LaunchedEffect(state, editing?.id) {
+        if (editing != null) {
+            wasEditing[0] = true
+            state.setTextAndPlaceCursorAtEnd(editing.content)
+            return@LaunchedEffect
+        }
+        if (wasEditing[0]) {
+            wasEditing[0] = false
+            state.setTextAndPlaceCursorAtEnd(Drafts.get(ctx, channelId))
+        }
         snapshotFlow { state.text.toString() }.collectLatest {
-            if (editing != null) return@collectLatest
             Drafts.set(channelId, it)
             delay(500) // 打つたびに書かないよう、手が止まってから保存する
             Drafts.persist(ctx, channelId)
@@ -304,8 +311,7 @@ fun Composer(
             graph.scope.launch(Dispatchers.Main.immediate) {
                 try {
                     graph.api.edit(editing.id, body)
-                    state.setTextAndPlaceCursorAtEnd(Drafts.get(appCtx, channelId))
-                    onCancelEdit()
+                    onCancelEdit() // 入力欄は、編集を抜けたときに下書きへ戻る (上の LaunchedEffect)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) { appCtx.toast(e.userMessage()) } finally { sending = false }
