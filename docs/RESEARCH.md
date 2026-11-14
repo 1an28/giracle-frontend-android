@@ -121,9 +121,13 @@
     どちらもストアの自動更新が前提。このアプリは GitHub の Releases から利用者が自分で入れ直す (README) ので、版番号は利用者に見えている
   - SimpMusic (個人の Android アプリ): 1.0 にしたのは出来ではなく在り方の変化 (Android 専用 → 複数の OS) のため。「最終地点ではなく土台」
   - NewPipe: 0.29 まで 0.x のまま。1.0 にしない理由は見つからなかった
-- 要約だけで読んだもの: Element X は 1.0 の番号を使わず「正式な公開」(2024-10) で区切った。Rocket.Chat 1.0 は「思い描いた機能が揃った最初の版」、
-  Mattermost 1.0 は「Slack と互換・セルフホストできる」
+  - Element X (element.io): 2023-09 の Ignition は「管理者と早く試す人向け」「まだ今の Element アプリの完全な代わりではない」とし、
+    "we'll obviously aim for a production ready 1.0 as soon as possible" と書いた。2024-10 の deep dive は番号を使わず
+    "The Matrix Conference saw the official launch of Element X!"、"the mobile app that almost all Element users should be using"、
+    "ready for primetime" と書いた。1.0 (正式な公開) を「本番で使える・皆が使うべきもの」として扱っている
+  - Pantheon の記事は題名が「… for Libraries using SemVer」で、ライブラリ向け
+- 要約だけで読んだもの (判断には使っていない): Rocket.Chat 1.0 は「思い描いた機能が揃った最初の版」、Mattermost 1.0 は「Slack と互換・セルフホストできる」
 - 推測: 人が使うアプリでは 1.0 に共通の意味は無く、各アプリが決めている (例は少なく、偏っているかもしれない)。
   このアプリでは版番号が見えるので、0.x は「試作」と読まれている可能性がある (利用者の受け取り方は確かめていない)
 - 出典: semver.org、pantheon.io「Don't Fear the 1.0」、runway.team「how-why-mobile-app-versioning」、photoroom.com「year-week-iteration」、
-  simpmusic.org「why-i-changed-the-version-from-v0-to-v1」、newpipe.net (0.27.6 の告知)、element.io (Ignition・deep dive)
+  simpmusic.org「why-i-changed-the-version-from-v0-to-v1」、newpipe.net (0.27.6 の告知)、element.io (Ignition・deep dive)。原文はすべて 2026-11-14 に読んだ
