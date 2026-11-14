@@ -146,6 +146,27 @@ object Drafts {
         if (t.isNullOrBlank()) remove(ctx, channelId) else persist(ctx, channelId)
     }
 
+    /** 送れなかった本文 (と添付) を、見えている入力欄に戻すための知らせ */
+    class Restored(val channelId: String, val text: String, val attachments: List<Attachment>)
+
+    private val _restored = kotlinx.coroutines.flow.MutableSharedFlow<Restored>(extraBufferCapacity = 8)
+    /** [failSend] の知らせ。開いている入力欄が受け取る (開いていなければ、次に開いたとき下書きから出る) */
+    val restored: kotlinx.coroutines.flow.SharedFlow<Restored> = _restored
+
+    /**
+     * 送れなかった (電波以外の失敗)。送った本文を下書きの前に戻し、送信中に打った文は後ろに残す。
+     * 入力欄 (画面) ではなく下書きの記録に戻すので、送信中に編集に入っていても (#97)、
+     * チャンネルを開き直して入力欄が作り直されていても (#89)、戻す先を間違えない。
+     */
+    fun failSend(ctx: android.content.Context, channelId: String, text: String, attachments: List<Attachment>) {
+        set(channelId, joinRestored(text, get(ctx, channelId)))
+        persist(ctx, channelId)
+        _restored.tryEmit(Restored(channelId, text, attachments))
+    }
+
+    /** 送れなかった本文 [kept] を、今の下書き [cur] の前に置く */
+    fun joinRestored(kept: String, cur: String): String = if (cur.isBlank()) kept else "$kept\n$cur"
+
     fun remove(ctx: android.content.Context, channelId: String) {
         mem.remove(channelId)
         prefs(ctx).edit().remove(channelId).apply()
@@ -200,6 +221,22 @@ fun Composer(
             Drafts.set(channelId, it)
             delay(500) // 打つたびに書かないよう、手が止まってから保存する
             Drafts.persist(ctx, channelId)
+        }
+    }
+
+    // 送れなかった本文を戻す (Drafts.failSend)。下書きの記録は戻してあるので、ここでは見えている入力欄に出すだけ。
+    // 編集中は入力欄を触らない (編集を抜けたときに、戻した下書きが出る。#97)
+    val latestEditing by rememberUpdatedState(editing)
+    LaunchedEffect(state) {
+        Drafts.restored.collect { r ->
+            if (r.channelId != channelId) return@collect
+            attachments.addAll(r.attachments)
+            if (latestEditing != null) return@collect
+            // 打った直後の文は、まだ下書きの記録に入っていないことがある (記録は入力欄の変化を後から受け取る) ので、入力欄から作る
+            val restored = Drafts.joinRestored(r.text, state.text.toString())
+            state.setTextAndPlaceCursorAtEnd(restored)
+            Drafts.set(channelId, restored)
+            Drafts.persist(appCtx, channelId)
         }
     }
 
@@ -354,14 +391,8 @@ fun Composer(
                     Drafts.finishSend(appCtx, channelId)
                     appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
-                    // 送信中に次の文を打ち始めていたら、消さずに後ろへ残す
-                    val cur = state.text.toString()
-                    val restored = if (cur.isBlank()) keep else "$keep\n$cur"
-                    state.setTextAndPlaceCursorAtEnd(restored)
-                    attachments.addAll(keepAttach)
-                    // 画面を離れていても、次に開いたときに本文が戻るよう下書きにも書く
-                    Drafts.set(channelId, restored)
-                    Drafts.persist(appCtx, channelId)
+                    // 下書きに戻す。送信中に次の文を打ち始めていたら、消さずに後ろへ残す。開いている入力欄にも出る
+                    Drafts.failSend(appCtx, channelId, keep, keepAttach)
                     appCtx.toast("送信できませんでした: ${e.userMessage()}")
                 }
             } finally { sending = false }
