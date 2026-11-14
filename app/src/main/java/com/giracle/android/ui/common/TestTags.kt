@@ -14,6 +14,11 @@ object TestTags {
     // 画面全体 (Root で各画面を包む)
     const val SCREEN_LOGIN = "screen.login"
     const val SCREEN_HOME = "screen.home"
+    /** 読み込みに失敗し、前回の内容を出しているときの帯 (#82) */
+    const val OFFLINE_BANNER = "app.offline_banner"
+    const val OFFLINE_RETRY = "app.offline_retry"
+    /** 出せる内容が何も無いときの、画面全体の読み込みの失敗 */
+    const val LOAD_ERROR = "app.load_error"
     /** 幅の広い画面で、チャンネルを開いていないときの右側 (#29) */
     const val TWO_PANE_EMPTY = "twopane.empty"
     const val SCREEN_CHANNEL = "screen.channel"

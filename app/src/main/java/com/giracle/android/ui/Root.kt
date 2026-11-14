@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -98,6 +100,8 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
     val ctx = LocalContext.current
     val store = LocalStore.current
     val settings by graph.prefs.settings.collectAsStateWithLifecycle()
+    val restored by store.restoredFromSnapshot.collectAsStateWithLifecycle()
+    val loading by graph.loading.collectAsStateWithLifecycle()
 
     // 通知の許可 (Android 13+)。初回ログイン時に 1 度だけ尋ねる
     var asked by rememberSaveable { mutableStateOf(false) }
@@ -155,11 +159,18 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
 
     CompositionLocalProvider(LocalNavigator provides nav) {
         Box(Modifier.fillMaxSize()) {
-            if (!p.ready && p.error != null) {
-                LoadError(p.error, onRetry = graph::retryLoad)
-            } else {
+            // 読み込みに失敗しても、前回の内容 (スナップショット) があれば出し続け、上の帯で知らせる (#82、P-2)。
+            // 画面全体を失敗の表示にするのは、出せる内容が何も無いときだけ
+            val failed = !p.ready && p.error != null
+            // me の有無では決めない (ログイン直後に、一部の読み込みだけ成功して me が入る場合がある)
+            if (failed && !restored) {
+                LoadError(p.error, loading = loading, onRetry = graph::retryLoad)
+            } else Column(Modifier.fillMaxSize()) {
+                if (failed) OfflineBanner(loading = loading, onRetry = graph::retryLoad)
                 val screen = nav.current
-                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                // 帯が上の余白 (状態バー) を受け持つので、下の画面の上の帯 (TopAppBar) が二重に空けないようにする
+                val contentInsets = if (failed) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().then(contentInsets)) {
                     // チャンネルの画面は、1 ペインと 2 ペインで描く場所が変わる。回転や折りたたみの開閉で切り替わっても
                     // 作り直さず、スクロール位置などの状態ごと移すため、movableContentOf で包む (#39、D-032)
                     val channelKey = (screen as? Screen.Channel)?.channelId
@@ -171,7 +182,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
                     if (twoPane) {
                         Row(Modifier.fillMaxSize()) {
                             Box(Modifier.width(HOME_PANE_WIDTH).fillMaxHeight().testTag(TestTags.SCREEN_HOME)) {
-                                androidx.compose.runtime.key(Screen.Home.stableKey()) { HomeScreen(loading = !p.ready) }
+                                androidx.compose.runtime.key(Screen.Home.stableKey()) { HomeScreen(loading = !p.ready && !failed, showConnection = !failed) }
                             }
                             VerticalDivider()
                             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
@@ -196,7 +207,7 @@ private fun SignedIn(p: AppPhase.SignedIn, graph: AppGraph, pendingOpen: Mutable
                         androidx.compose.runtime.key(screen.stableKey()) {
                             Box(Modifier.fillMaxSize().testTag(screen.testTag())) {
                                 when (screen) {
-                                    Screen.Home -> HomeScreen(loading = !p.ready)
+                                    Screen.Home -> HomeScreen(loading = !p.ready && !failed, showConnection = !failed)
                                     is Screen.Channel -> channelContent(screen.channelId, screen.messageId)
                                     is Screen.ChannelSettings -> ChannelSettingsScreen(screen.channelId)
                                     Screen.Inbox -> InboxScreen()
@@ -237,11 +248,36 @@ private fun Screen.stableKey(): String = when (this) {
     else -> toString()
 }
 
+/**
+ * 読み込みに失敗したが、前回の内容を出しているときの帯 (#82)。回線が戻れば自動でやり直す (AppGraph.retryLoadIfFailed) ので、
+ * 「再試行」は急ぐ人のためのもの。やり直している間は、押せないようにして進み具合を出す
+ */
 @Composable
-private fun LoadError(error: String, onRetry: () -> Unit) {
+internal fun OfflineBanner(loading: Boolean, onRetry: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().testTag(TestTags.OFFLINE_BANNER)) {
+        Row(
+            Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (loading) "サーバーにつないでいます…" else "サーバーにつながりません — 前回の内容を表示しています。つながったら更新します",
+                Modifier.weight(1f).padding(vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (loading) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.padding(horizontal = 14.dp).size(20.dp), strokeWidth = 2.dp)
+            } else {
+                androidx.compose.material3.TextButton(onClick = onRetry, modifier = Modifier.testTag(TestTags.OFFLINE_RETRY)) { Text("再試行") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadError(error: String, loading: Boolean, onRetry: () -> Unit) {
     val graph = LocalGraph.current
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().padding(24.dp).testTag(TestTags.LOAD_ERROR), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text("サーバーから読み込めませんでした", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -253,7 +289,7 @@ private fun LoadError(error: String, onRetry: () -> Unit) {
             androidx.compose.material3.TextButton(onClick = { com.giracle.android.ui.common.openAppSettings(ctx) }) { Text("アプリの設定を開く") }
         }
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onRetry) { Text("再試行") }
+        Button(onClick = onRetry, enabled = !loading) { Text(if (loading) "読み込んでいます…" else "再試行") }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { scope.launch { graph.signOut() } }) { Text("ログアウト") }
     }

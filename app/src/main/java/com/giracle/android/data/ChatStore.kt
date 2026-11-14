@@ -100,6 +100,8 @@ class ChatStore(
     private val shouldConnect: () -> Boolean = { true },
 ) {
     val me = MutableStateFlow<User?>(null)
+    /** 前回の内容 (スナップショット) を戻したか。読み込みに失敗したとき、画面全体の失敗にせず前回の内容を出す判断に使う (#82) */
+    val restoredFromSnapshot = MutableStateFlow(false)
     val serverConfig = MutableStateFlow(ServerConfig())
     val channels = MutableStateFlow<List<Channel>>(emptyList())
     val users = MutableStateFlow<Map<String, User>>(emptyMap())
@@ -278,6 +280,7 @@ class ChatStore(
     fun restore(s: Snapshot) {
         if (me.value != null) return
         Log.i(SYNC_TAG, "restore: histories=${s.histories.size}")
+        restoredFromSnapshot.value = true
         me.value = s.me
         serverConfig.value = s.server
         channels.value = s.channels
@@ -364,6 +367,22 @@ class ChatStore(
             }
             flow.value = state
             state.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
+        }
+    }
+
+    /**
+     * 開いているチャンネルが前回の内容 (キャッシュ) のままなら取り直す。圏外で起動して取り直せなかったチャンネルを、
+     * つながって読み込みが済んだ後に最新にする (#82)。失敗しても表示は残す
+     */
+    suspend fun refreshOpenChannel() {
+        val current = currentChannelId ?: return
+        if (histories[current]?.value?.fromCache != true) return
+        try {
+            openChannel(current)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "refreshOpenChannel failed", e)
         }
     }
 

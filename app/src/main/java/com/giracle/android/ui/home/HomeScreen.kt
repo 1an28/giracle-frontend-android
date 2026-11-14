@@ -73,10 +73,13 @@ import com.giracle.android.ui.common.LocalGraph
 import com.giracle.android.ui.common.LocalStore
 import com.giracle.android.ui.common.TestTags
 
-/** ホーム = Web 版のサイドバー。参加チャンネルと各機能への入り口 */
+/**
+ * ホーム = Web 版のサイドバー。参加チャンネルと各機能への入り口。
+ * [showConnection] が false のときは接続の状態の行を出さない (読み込みの失敗を上の帯で知らせているとき。#82)
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(loading: Boolean) {
+fun HomeScreen(loading: Boolean, showConnection: Boolean = true) {
     val graph = LocalGraph.current
     val store = LocalStore.current
     val nav = LocalNavigator.current
@@ -145,7 +148,7 @@ fun HomeScreen(loading: Boolean) {
         LazyColumn(Modifier.fillMaxSize().padding(pad)) {
             item(key = "status", contentType = "status") {
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                else if (wsState != WsClient.State.Connected) {
+                else if (showConnection && wsState != WsClient.State.Connected) {
                     val label = when (wsState) {
                         WsClient.State.Connecting -> "接続中…"
                         WsClient.State.AuthError -> "リアルタイム接続が拒否されました (サーバーの CORS_ORIGIN 設定を確認)"

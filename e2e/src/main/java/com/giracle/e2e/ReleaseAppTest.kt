@@ -88,8 +88,9 @@ class ReleaseAppTest {
         // 5. 送信: 画面に出て、サーバーにも届いている
         val sent = "送信テスト $suffix"
         wait(res("composer.input"), 10_000, "入力欄").apply { click(); text = sent }
-        wait(res("composer.send"), 5_000, "送信ボタン").click()
-        wait(By.textContains(sent), 15_000, "自分の送信")
+        clickSendChecked(sent)
+        // 入力欄の文字に当たらないよう、メッセージの一覧の中だけで探す (入力欄に残ったままでも通っていた)
+        wait(res("channel.messages").hasDescendant(By.textContains(sent)), 15_000, "自分の送信 (一覧の中)")
         waitFor("サーバーに送信が届く") { admin.recentTexts(channelId).contains(sent) }
         shot("sent")
 
@@ -605,6 +606,82 @@ class ReleaseAppTest {
         Log.i(TAG, "E2E-RESULT lan_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
     }
 
+    /**
+     * 電波が無いときに起動する (#82、P-2)。前回の内容が見え続けるか、電波が戻ったら操作なしで最新になるかを測る。
+     * adb reverse の localhost は機内モードでも届くので、LAN のアドレスのサーバー (lanServer) を使う。
+     * 結果は「E2E-RESULT offline_start ...」の行。
+     */
+    @Test fun offlineColdStart() {
+        assumeTrue("lanServer の指定が無い", lanServer != null)
+        freshLogin(lanServer!!)
+        findScrolling(res("home.channel:$channelId"), "確認用チャンネル").click()
+        wait(res("screen.channel"), 10_000, "チャンネル画面")
+        val before = "圏外起動の前 $suffix"
+        bob.send(channelId, before)
+        wait(By.textContains(before), 20_000, "圏外にする前の受信")
+        // 背面に回して前回の内容 (スナップショット) を書かせてから、プロセスを止める
+        device.pressHome()
+        SystemClock.sleep(3_000)
+        shell("am force-stop $pkg")
+        val after = "圏外の間の送信 $suffix"
+        val mine = "圏外起動から送信 $suffix"
+        var outboxShown = false
+        var shownMs = -1L
+        var errorMs = -1L
+        var hiddenMs = -1L
+        var bannerMs = -1L
+        shell("cmd connectivity airplane-mode enable")
+        try {
+            SystemClock.sleep(3_000)
+            val t0 = SystemClock.uptimeMillis()
+            launch()
+            // 15 秒見続ける (読み込みの失敗は、接続のタイムアウト 10 秒より前に出るはず)
+            while (SystemClock.uptimeMillis() - t0 < 15_000) {
+                val now = SystemClock.uptimeMillis() - t0
+                val visible = device.findObject(By.textContains(before)) != null
+                if (visible && shownMs < 0) shownMs = now
+                if (!visible && shownMs >= 0 && hiddenMs < 0) hiddenMs = now
+                if (errorMs < 0 && device.findObject(By.text(LOAD_ERROR_TEXT)) != null) errorMs = now
+                if (bannerMs < 0 && device.findObject(res("app.offline_banner")) != null) bannerMs = now
+                SystemClock.sleep(300)
+            }
+            shot("offline_start")
+            // 書ける (P-2): 圏外で起動したままでも、送ると送信待ちになる (D-029)
+            wait(res("composer.input"), 10_000, "入力欄 (圏外で起動)").apply { click(); text = mine }
+            wait(res("composer.send"), 5_000, "送信ボタン (圏外で起動)").click()
+            outboxShown = device.wait(Until.findObject(res("composer.outbox")), 20_000) != null
+            hideKeyboard()
+            // 圏外の間に、相手が送る (端末の外のこと。電波が戻ったら見えるはず)
+            bob.send(channelId, after)
+        } finally {
+            shell("cmd connectivity airplane-mode disable")
+        }
+        val stillShown = device.findObject(By.textContains(before)) != null
+        val back = SystemClock.uptimeMillis()
+        val updated = device.wait(Until.findObject(By.textContains(after)), 60_000) != null
+        val updatedMs = if (updated) SystemClock.uptimeMillis() - back else -1L
+        shot("offline_back")
+        var delivered = false
+        runCatching { waitFor("圏外で送ったものがサーバーに届く", 30_000) { admin.recentTexts(channelId).contains(mine) }; delivered = true }
+        SystemClock.sleep(2_000)
+        val deliveredCount = admin.recentTexts(channelId).count { it == mine }
+        val errorStill = device.findObject(By.text(LOAD_ERROR_TEXT)) != null
+        Log.i(
+            TAG,
+            "E2E-RESULT offline_start shown_ms=$shownMs hidden_ms=$hiddenMs error_ms=$errorMs banner_ms=$bannerMs still_shown_15s=$stillShown " +
+                "updated_after_net_ms=$updatedMs error_after_net=$errorStill outbox_shown=$outboxShown delivered=$deliveredCount sdk=${android.os.Build.VERSION.SDK_INT}",
+        )
+        assertAlive("電波が無いときに起動した後")
+        // 直した後の期待 (#82): 前回の内容は見え続け、画面全体の失敗の表示にならない。電波が戻ったら操作なしで最新になる
+        assertTrue("電波が無いときに起動して、前回の内容が出ない (shown_ms=$shownMs)", shownMs >= 0)
+        assertTrue("電波が無いときに起動して、前回の内容が隠れた (hidden_ms=$hiddenMs error_ms=$errorMs)", stillShown && hiddenMs < 0 && errorMs < 0)
+        assertTrue("電波が無いときに、オフラインの帯 (app.offline_banner) が出ない", bannerMs >= 0)
+        assertTrue("電波が戻っても、操作なしでは圏外の間の送信が出ない", updated)
+        assertTrue("圏外で起動して送ったものが、送信待ちにならない", outboxShown)
+        assertTrue("圏外で起動して送ったものが $deliveredCount 件届いた (1 件のはず。delivered=$delivered)", deliveredCount == 1)
+        Log.i(TAG, "E2E-RESULT offline_start_test=done sdk=${android.os.Build.VERSION.SDK_INT}")
+    }
+
     /** 共有するファイル (64x64 の PNG と、短い文書) をキャッシュの share/ に作る */
     private fun writeShareFiles(png: String, txt: String) {
         val dir = File(instr.context.cacheDir, "share").apply { mkdirs() }
@@ -649,6 +726,7 @@ class ReleaseAppTest {
         waitDismissingSystemDialogs(sel, timeoutMs.also { Log.i(TAG, "待つ: $what") }) ?: run {
             assertAlive("「$what」を待つ間")
             shot("missing")
+            dumpUi("「$what」が出ない")
             fail("「$what」が ${timeoutMs / 1000} 秒以内に出ない"); error("unreachable")
         }
 
@@ -711,7 +789,46 @@ class ReleaseAppTest {
             SystemClock.sleep(500)
         }
         shot("timeout")
+        dumpUi("「$what」が満たされない")
         fail("$what (${timeoutMs / 1000} 秒待った)")
+    }
+
+    /**
+     * 送信ボタンを押し、入力欄が空になる (アプリが送信を受け付けた) ことを確かめる。
+     * #94: 押しても入力欄に残ったままになることが、この PR の CI で 2 回あった (送信ボタンは押せる状態だった)。
+     * 原因を切り分けるため、押す前後のボタンの位置・キーボードの状態を記録し、受け付けられなければ 1 回だけ押し直す。
+     * 押し直したことは E2E-RESULT send_tap_retry として残し、e2e-run.sh が警告にする (見えなくしない)
+     */
+    private fun clickSendChecked(text: String) {
+        val btn = wait(res("composer.send"), 5_000, "送信ボタン")
+        val before = btn.visibleBounds
+        btn.click()
+        if (waitInputCleared(text, 3_000)) return
+        val after = device.findObject(res("composer.send"))?.visibleBounds
+        val ime = shell("dumpsys input_method").contains("mInputShown=true")
+        Log.w(TAG, "E2E-RESULT send_tap_retry before=$before after=$after ime_shown=$ime")
+        dumpUi("送信ボタンを押しても入力欄が空にならない")
+        wait(res("composer.send"), 5_000, "送信ボタン (押し直し)").click()
+        if (!waitInputCleared(text, 5_000)) fail("送信ボタンを 2 回押しても、送信を受け付けない (入力欄に残ったまま)")
+    }
+
+    private fun waitInputCleared(text: String, timeoutMs: Long): Boolean {
+        val end = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < end) {
+            if (device.findObject(res("composer.input"))?.text?.contains(text) != true) return true
+            SystemClock.sleep(200)
+        }
+        return false
+    }
+
+    /** 失敗したときの手がかり: 画面の要素 (testTag・文字・押せるか) を logcat に出す。e2e-run.sh が CI のログに出す */
+    private fun dumpUi(reason: String) {
+        runCatching {
+            Log.i(TAG, "UI-DUMP $reason")
+            device.findObjects(By.res(Pattern.compile(".+"))).take(60).forEach { o ->
+                Log.i(TAG, "UI-DUMP  ${o.resourceName} text=${o.text?.take(60)} enabled=${o.isEnabled}")
+            }
+        }
     }
 
     private fun assertAlive(whenDoing: String) {
@@ -729,5 +846,7 @@ class ReleaseAppTest {
         /** アプリの SendTrace のタグ (#70) */
         private const val PERF_TAG = "GiraclePerf"
         private val ALLOW_BUTTON: BySelector = By.res(Pattern.compile(".*:id/permission_allow_button"))
+        /** 読み込みに失敗したときの画面全体の表示 (ui/Root.kt の LoadError) */
+        private const val LOAD_ERROR_TEXT = "サーバーから読み込めませんでした"
     }
 }

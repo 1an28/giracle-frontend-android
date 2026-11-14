@@ -92,6 +92,9 @@ logcat_stop "$OUT/logcat.txt" slow
 status=0
 # 失敗したときの手がかりを、成果物を開かなくても CI のログで読めるように出す
 show_clues() {
+  echo "::group::失敗したときの画面の要素 (UI-DUMP)"
+  grep -E "GiracleE2E: UI-DUMP" "$OUT/logcat.txt" | sed -E 's/.*UI-DUMP/UI-DUMP/' | tail -n 200
+  echo "::endgroup::"
   echo "::group::logcat (アプリ・起動・クラッシュに関係する行)"
   grep -E "GiracleE2E|GiracleNav|AndroidRuntime|$APP_PKG|ActivityTaskManager: (START|Displayed)|ActivityManager: (Start proc|Process .* has died|Killing)" "$OUT/logcat.txt" | tail -n 150
   echo "::endgroup::"
@@ -141,6 +144,18 @@ if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT lan_test=don
   echo "::error::LAN のサーバーでの確認 (lanServerPermissionAndOfflineSend) が最後まで動いていない (飛ばされた?)"
   status=1
 fi
+if [ $status = 0 ] && [ -n "$LAN_SERVER" ] && ! grep -q "E2E-RESULT offline_start_test=done" "$OUT/logcat.txt"; then
+  echo "::error::電波が無いときの起動の確認 (offlineColdStart) が最後まで動いていない (飛ばされた?)"
+  status=1
+fi
+# 送信ボタンを押し直した回 (#94)。通っても見えるように警告にする
+if grep -q "E2E-RESULT send_tap_retry" "$OUT/logcat.txt"; then
+  echo "::warning::送信ボタンを押しても受け付けられず、押し直した (#94)。$(grep -oE 'E2E-RESULT send_tap_retry .*' "$OUT/logcat.txt" | head -1)"
+fi
+# 電波が無いときの起動 (#82、P-2)。前回の内容が見え続けるか・電波が戻ったら操作なしで最新になるか
+echo "::group::電波が無いときの起動 (offline_start)"
+grep -oE "E2E-RESULT offline_start .*" "$OUT/logcat.txt" | sed "s/E2E-RESULT //"
+echo "::endgroup::"
 [ $status = 0 ] || show_clues
 if grep -q "Process: $APP_PKG" "$OUT/crash.txt"; then
   echo "::error::アプリが落ちた (crash.txt。R8 のスタックトレースは mapping.txt で戻せる)"
