@@ -117,9 +117,26 @@ class WsClient(
         watchdogJob = scope.launch {
             delay(connectWatchdogMs)
             if (socket === s && _state.value == State.Connecting) {
-                Log.i(TAG, "connect watchdog: cancel stuck attempt")
+                // 先に外してから取り消す。取り消しの通知 (onFailure) を待たない:
+                // 名前解決の途中などでは、取り消しても通知がすぐには来ないため (外した後の通知は socket !== s で無視される)
+                Log.i(TAG, "connect watchdog: drop stuck attempt")
+                socket = null
                 s.cancel()
+                _state.value = State.Disconnected
+                scheduleRetry()
             }
+        }
+    }
+
+    /** 待ち時間 (1 秒から倍々、最長 30 秒) を置いてつなぎ直す */
+    private fun scheduleRetry() {
+        if (!wanted) return
+        val backoff = (1000L shl attempts.coerceAtMost(5)).coerceAtMost(30_000L)
+        attempts++
+        retryJob?.cancel()
+        retryJob = scope.launch {
+            delay(backoff + Random.nextLong(500))
+            if (wanted && socket == null) open()
         }
     }
 
@@ -180,13 +197,7 @@ class WsClient(
             pingJob?.cancel()
             if (_state.value == State.AuthError) return
             _state.value = State.Disconnected
-            if (!wanted) return
-            val backoff = (1000L shl attempts.coerceAtMost(5)).coerceAtMost(30_000L)
-            attempts++
-            retryJob = scope.launch {
-                delay(backoff + Random.nextLong(500))
-                if (wanted && socket == null) open()
-            }
+            scheduleRetry()
         }
     }
 

@@ -104,4 +104,37 @@ class WsClientReconnectTest {
         waitFor { synchronized(accepted) { accepted.size >= 2 } }
         ws.stop()
     }
+
+    /** つながった接続は、見張りの時間が過ぎても切らない */
+    @Test fun watchdogKeepsConnected() {
+        server.enqueue(MockResponse.Builder().webSocketUpgrade(object : WebSocketListener() {
+            override fun onClosing(webSocket: okhttp3.WebSocket, code: Int, reason: String) { webSocket.close(1000, null) }
+        }).build())
+        server.start()
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val http = buildOkHttp(Prefs(ctx, "test-ws4"), null)
+        val ep = Endpoint.parse(server.url("/").toString())!!
+        val ws = WsClient(http, scope, connectWatchdogMs = 300) { ep }
+        ws.start()
+        waitFor { ws.state.value == WsClient.State.Connected }
+        Thread.sleep(1_000)
+        assertEquals(WsClient.State.Connected, ws.state.value)
+        assertEquals(1, server.requestCount)
+        ws.stop()
+    }
+
+    /** 名前解決で止まった試み (取り消しても通知がすぐ来ない) も、見張りが外してつなぎ直す */
+    @Test fun watchdogRecoversFromHangingDns() {
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val http = buildOkHttp(Prefs(ctx, "test-ws5"), null).newBuilder()
+            .dns { calls.incrementAndGet(); Thread.sleep(30_000); throw java.net.UnknownHostException(it) }
+            .build()
+        val ep = Endpoint.parse("http://hang.invalid")!!
+        val ws = WsClient(http, scope, connectWatchdogMs = 300) { ep }
+        ws.start()
+        // 1 回目は名前解決で止まる。見張りが外し、待ち時間 (約 1 秒) の後に 2 回目の名前解決が始まる
+        waitFor { calls.get() >= 2 }
+        ws.stop()
+    }
 }
