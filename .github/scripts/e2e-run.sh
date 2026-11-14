@@ -25,19 +25,44 @@ set -e
 "$ADB" install -r "$APP_APK"
 "$ADB" install -r -t "$TEST_APK"
 "$ADB" shell pm list instrumentation
-# 1 回目の通しの確認は記録が多く、既定の大きさでは前半の結果の印 (ux net=fast) が押し出されて消えた (#73 の 6f708de、API 37)。大きくする
-"$ADB" logcat -G 16M || true
-"$ADB" logcat -c || true
 set +e
+# logcat の入れ物 (エミュレータは 2M) は、実行の間にあふれて古い行が消える (#81)。
+# 大きくしたうえで、実行の間ずっとファイルに流し続ける (終わってから -d で取り出すと、最後の数秒しか残らないことがある)
+"$ADB" logcat -G 16M || echo "::warning::logcat の入れ物を大きくできなかった"
+"$ADB" logcat -g || true
+LOGCAT_PID=
+# 実行の前に呼ぶ。入れ物を空にし、ファイルへ流し始め、始まりの印を書く
+logcat_start() { # $1: 追記するファイル $2: 実行の名前
+  "$ADB" logcat -c || true
+  "$ADB" logcat >> "$1" 2>&1 &
+  LOGCAT_PID=$!
+  sleep 1
+  "$ADB" shell log -t GiracleE2E "E2E-LOG start=$2"
+}
+# 実行の後に呼ぶ。終わりの印がファイルに届くまで待ってから止め、始まりと終わりの印がそろっているかを見る
+logcat_stop() { # $1: ファイル $2: 実行の名前
+  "$ADB" shell log -t GiracleE2E "E2E-LOG end=$2"
+  for _ in $(seq 20); do grep -q "E2E-LOG end=$2" "$1" && break; sleep 0.5; done
+  kill "$LOGCAT_PID" 2>/dev/null || true
+  wait "$LOGCAT_PID" 2>/dev/null || true
+  if grep -q "E2E-LOG start=$2" "$1" && grep -q "E2E-LOG end=$2" "$1"; then
+    echo "logcat ($2): 始まりと終わりの印がそろっている (流す途中で logd に切られていない)"
+  else
+    # 結果の印が見つからない失敗が、ログの欠けによるものだと分かるようにする
+    echo "::warning::logcat ($2) の始まりか終わりの印が無い。ログが欠けていて、下の「動いていない」の判定は当てにならない"
+  fi
+}
 
+# 実行ごとに追記するので、前の実行 (手元で 2 回目を動かしたとき) の行を残さないよう空にしておく
+: > "$OUT/logcat.txt"
+logcat_start "$OUT/logcat.txt" fast
 t0=$(date +%s)
 LAN_ARGS=()
 [ -n "$LAN_SERVER" ] && LAN_ARGS=(-e lanServer "$LAN_SERVER")
 "$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 "${LAN_ARGS[@]}" \
   "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument.txt"
 echo "e2e: $(( $(date +%s) - t0 ))s"
-
-"$ADB" logcat -d > "$OUT/logcat.txt" 2>&1
+logcat_stop "$OUT/logcat.txt" fast
 
 # よく使う作業を、遅い回線でも測る (D-046)。上の実行は端末の localhost (adb reverse) なので、通信をほぼ待たない。
 # ランナーの上に遅延を足す中継 (latency-proxy.py、片道 150ms) を置き、端末の localhost:3334 をそこへつなぐ。
@@ -46,7 +71,6 @@ SLOW_OK=1
 SLOW_PORT=3334
 # 1 回目のクラッシュの記録を、消す前に取っておく (下のクラッシュの判定は crash.txt だけを見る)
 "$ADB" logcat -b crash -d > "$OUT/crash.txt" 2>&1
-"$ADB" logcat -c || true
 python3 .github/scripts/latency-proxy.py $SLOW_PORT 127.0.0.1 3333 150 > "$OUT/latency-proxy.log" 2>&1 &
 PROXY_PID=$!
 sleep 1
@@ -54,13 +78,14 @@ sleep 1
 proxy_check=$(curl -s --noproxy '*' -o /dev/null -w "%{http_code} %{time_total}" http://localhost:$SLOW_PORT/api/server/config)
 echo "遅延の中継を通した問い合わせ (ランナーから。状態と秒): $proxy_check"
 case "$proxy_check" in 200*) ;; *) echo "::error::遅延の中継が動いていない"; cat "$OUT/latency-proxy.log"; SLOW_OK=0 ;; esac
+logcat_start "$OUT/logcat.txt" slow
 t1=$(date +%s)
 "$ADB" shell am instrument -w -e appPackage "$APP_PKG" -e server http://localhost:3333 \
   -e class com.giracle.e2e.ReleaseAppTest#uxTasks -e uxServer "http://localhost:$SLOW_PORT" -e uxNet slow \
   "$TEST_PKG/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tee "$OUT/instrument-slow.txt"
 echo "e2e (遅い回線の ux): $(( $(date +%s) - t1 ))s"
 kill $PROXY_PID 2>/dev/null || true
-"$ADB" logcat -d >> "$OUT/logcat.txt" 2>&1
+logcat_stop "$OUT/logcat.txt" slow
 "$ADB" logcat -b crash -d >> "$OUT/crash.txt" 2>&1
 "$ADB" pull "/sdcard/Android/data/$TEST_PKG/files/screenshots" "$OUT/" > /dev/null 2>&1 || true
 
