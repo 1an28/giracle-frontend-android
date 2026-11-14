@@ -1134,6 +1134,6 @@
 - **記録で分かったこと** (#114 の最初の e2e、API 35・37 の速い回線の reply): 押してから約 50〜200ms の間、メインスレッドは `HardwareRenderer.nSyncAndDrawFrame` (RenderThread との受け渡し) で止まっていた (描画の時刻は API 37 で 22ms の次が 251ms)。
   その間 Dispatchers.Default のスレッドは仕事をしておらず、解析は始まっていなかった。`GiracleApi.send` は通信 (`withContext(IO)`) と解析 (`withContext(Default)`) を別々に囲んでおり、
   呼んだ側がメインスレッドなので、間でメインに戻っていた (コードで確かめた)。メインが空くのを待ってから解析に入るので、解析の終わり (`parsed`) が約 330ms になっていた
-- **直したこと**: `call`・`callUnit`・`send`・`uploadFile` で、通信から解析までを 1 つの `withContext(Dispatchers.Default)` で囲み、メインへは終わりに 1 回だけ戻る。
-  解析は今までどおり Default で行う。直した後の値は #114 の 2 回目の e2e で見る
-- **直していないこと**: メインスレッドが描画の受け渡しで止まる約 180ms (ROADMAP)。エミュレータの描画によるものかを確かめていない
+- **この PR では直さない**: 通信から解析までを 1 つの `withContext(Dispatchers.Default)` で囲み、メインへは終わりに 1 回だけ戻す直し方が候補 (ROADMAP)。
+  PR の目的を記録にとどめるため、別の PR にする
+- **分かっていないこと**: メインスレッドが描画の受け渡しで止まる約 180ms の原因 (ROADMAP)。エミュレータの描画によるものかを確かめていない
