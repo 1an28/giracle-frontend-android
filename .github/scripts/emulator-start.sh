@@ -3,8 +3,11 @@
 #   API     : 使う Android の API レベル (既定 35)
 #   TARGET  : システムイメージの種類 (既定 google_apis)
 #   ARCH    : x86_64 (Linux ランナーは x86_64)
+#   PHASE   : all (既定。起動して起動完了まで待つ) / launch (起動を始めるところまで) / wait (launch の後、起動完了まで待つ)
+#             launch を裏で動かし、その間に APK をビルドしてから wait を呼ぶと、待ち時間が重なる (#85)
 # 終わると adb で 1 台につながった状態になる。エミュレータの出力は ~/emulator.log。
 set -euo pipefail
+PHASE=${PHASE:-all}
 API=${API:-35}
 TARGET=${TARGET:-google_apis}
 ARCH=${ARCH:-x86_64}
@@ -13,6 +16,7 @@ SDKM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
 AVDM=$(dirname "$SDKM")/avdmanager
 IMAGE="system-images;android-$API;$TARGET;$ARCH"
 
+launch() {
 # GitHub のランナーは /dev/kvm があるが、一般ユーザーに権限が無いので開ける
 if [ -e /dev/kvm ]; then
   echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
@@ -42,11 +46,15 @@ mkdir -p "$ANDROID_AVD_HOME"
 echo no | "$AVDM" create avd -n ci -k "$IMAGE" -d pixel_6 --force
 "$SDK/emulator/emulator" -list-avds
 # 画面は 1080x2400 (pixel_6)。描画は CPU (swiftshader)、音声・カメラなし、毎回まっさらな状態から起動する
-t1=$(date +%s)
 nohup "$SDK/emulator/emulator" -avd ci -no-window -no-audio -no-boot-anim -no-snapshot \
   -gpu swiftshader_indirect -camera-back none -camera-front none -memory 4096 -cores 4 \
   > "$HOME/emulator.log" 2>&1 &
+date +%s > "$HOME/emulator-launch-time"
+}
+
+wait_boot() {
 ADB="$SDK/platform-tools/adb"
+t1=$(cat "$HOME/emulator-launch-time")
 timeout 180 "$ADB" wait-for-device || { echo "adb does not see the emulator" >&2; tail -n 50 "$HOME/emulator.log" >&2; exit 1; }
 for _ in $(seq 300); do
   if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then break; fi
@@ -55,6 +63,7 @@ done
 if [ "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; then
   echo "emulator did not boot" >&2; tail -n 50 "$HOME/emulator.log" >&2; exit 1
 fi
+# 起動を始めてからの秒数 (PHASE=wait のときは、ビルドと重なった時間を含む)
 echo "boot: $(( $(date +%s) - t1 ))s"
 # アニメーションを止め、画面を点けたままにする (UI 操作の待ちを安定させる)
 "$ADB" shell settings put global window_animation_scale 0
@@ -67,3 +76,11 @@ echo "boot: $(( $(date +%s) - t1 ))s"
 "$ADB" devices
 # 後の手順から adb を使えるようにする
 if [ -n "${GITHUB_PATH:-}" ]; then echo "$SDK/platform-tools" >> "$GITHUB_PATH"; fi
+}
+
+case "$PHASE" in
+  all) launch; wait_boot ;;
+  launch) launch ;;
+  wait) wait_boot ;;
+  *) echo "PHASE は all / launch / wait のどれか: $PHASE" >&2; exit 2 ;;
+esac
