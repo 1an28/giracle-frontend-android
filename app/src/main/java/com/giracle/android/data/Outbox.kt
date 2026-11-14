@@ -33,6 +33,12 @@ data class OutboxItem(
     val createdAt: Long,
     /** サーバーに断られたときの理由。これがあるものは自動では送り直さない */
     val error: String? = null,
+    /**
+     * 入れたときのユーザー。今のユーザーと違えば送らずに捨てる (#74)。
+     * ログアウトの片付け (clear) と入れるのが重なると、前のアカウントの本文が残り、次のアカウントで送られうるため。
+     * これより前に保存されたものは null (確かめようがないので、これまでどおり送る)
+     */
+    val userId: String? = null,
 )
 
 /**
@@ -64,8 +70,8 @@ class Outbox(file: File) {
         val myUserId: String?
     }
 
-    suspend fun add(channelId: String, text: String, fileIds: List<String>, replyTo: String?, now: Long = System.currentTimeMillis()): OutboxItem {
-        val item = OutboxItem(UUID.randomUUID().toString(), channelId, text, fileIds, replyTo, now)
+    suspend fun add(channelId: String, text: String, fileIds: List<String>, replyTo: String?, userId: String?, now: Long = System.currentTimeMillis()): OutboxItem {
+        val item = OutboxItem(UUID.randomUUID().toString(), channelId, text, fileIds, replyTo, now, userId = userId)
         _items.update { it + item }
         save()
         return item
@@ -93,6 +99,13 @@ class Outbox(file: File) {
         val targets = _items.value.filter { if (only != null) it.localId == only else it.error == null }
         val recentByChannel = HashMap<String, List<Message>>()
         for (item in targets) {
+            val me = sender.myUserId
+            if (item.userId != null && me != null && item.userId != me) {
+                // 前のアカウントで入れたもの。送らずに捨てる (#74)
+                Log.i(TAG, "dropped (other account): ${item.localId}")
+                remove(item.localId)
+                continue
+            }
             try {
                 val recent = recentByChannel.getOrPut(item.channelId) { sender.recent(item.channelId) }
                 // 一致に使ったもの・送ったものは、ほかの項目に当てない (#66)
@@ -102,12 +115,14 @@ class Outbox(file: File) {
                     markUsed(delivered.id)
                 } else {
                     markUsed(sender.send(item))
+                    Log.i(TAG, "sent: ${item.localId}")
                 }
                 remove(item.localId)
                 done++
             } catch (e: ApiException) {
-                if (e.isUnauthorized) break
+                if (e.isUnauthorized) { Log.i(TAG, "unauthorized: ${item.localId}"); break }
                 // サーバーに断られた (削除されたチャンネルなど)。自動では送り直さず、利用者に選んでもらう
+                Log.i(TAG, "rejected: ${item.localId} HTTP ${e.code}")
                 _items.update { l -> l.map { if (it.localId == item.localId) it.copy(error = e.body.take(200).ifBlank { "HTTP ${e.code}" }) else it } }
                 save()
             } catch (e: IOException) {

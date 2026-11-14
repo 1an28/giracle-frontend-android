@@ -146,6 +146,27 @@ object Drafts {
         if (t.isNullOrBlank()) remove(ctx, channelId) else persist(ctx, channelId)
     }
 
+    /** 送れなかった本文 (と添付) を、見えている入力欄に戻すための知らせ */
+    class Restored(val channelId: String, val text: String, val attachments: List<Attachment>)
+
+    private val _restored = kotlinx.coroutines.flow.MutableSharedFlow<Restored>(extraBufferCapacity = 8)
+    /** [failSend] の知らせ。開いている入力欄が受け取る (開いていなければ、次に開いたとき下書きから出る) */
+    val restored: kotlinx.coroutines.flow.SharedFlow<Restored> = _restored
+
+    /**
+     * 送れなかった (電波以外の失敗)。送った本文を下書きの前に戻し、送信中に打った文は後ろに残す。
+     * 入力欄 (画面) ではなく下書きの記録に戻すので、送信中に編集に入っていても (#97)、
+     * チャンネルを開き直して入力欄が作り直されていても (#89)、戻す先を間違えない。
+     */
+    fun failSend(ctx: android.content.Context, channelId: String, text: String, attachments: List<Attachment>) {
+        set(channelId, joinRestored(text, get(ctx, channelId)))
+        persist(ctx, channelId)
+        _restored.tryEmit(Restored(channelId, text, attachments))
+    }
+
+    /** 送れなかった本文 [kept] を、今の下書き [cur] の前に置く */
+    fun joinRestored(kept: String, cur: String): String = if (cur.isBlank()) kept else "$kept\n$cur"
+
     fun remove(ctx: android.content.Context, channelId: String) {
         mem.remove(channelId)
         prefs(ctx).edit().remove(channelId).apply()
@@ -183,16 +204,39 @@ fun Composer(
     // 送信はアプリの scope で続くので、終わったときに最新の知らせ先を呼ぶ
     val latestOnSent by rememberUpdatedState(onSent)
 
-    // 編集モードに入ったら本文を差し替える
-    LaunchedEffect(editing?.id) {
-        if (editing != null) state.setTextAndPlaceCursorAtEnd(editing.content)
-    }
-    LaunchedEffect(state, editing) {
+    // 編集の間、入力欄は編集している本文になる。抜けたら (保存・取り消し・返信への切り替え) 下書きに戻す (#92)。
+    // 戻すのと下書きの記録を同じ効果にまとめ、戻す前に編集の本文で下書きを上書きしないようにする
+    val wasEditing = remember(state) { booleanArrayOf(false) }
+    LaunchedEffect(state, editing?.id) {
+        if (editing != null) {
+            wasEditing[0] = true
+            state.setTextAndPlaceCursorAtEnd(editing.content)
+            return@LaunchedEffect
+        }
+        if (wasEditing[0]) {
+            wasEditing[0] = false
+            state.setTextAndPlaceCursorAtEnd(Drafts.get(ctx, channelId))
+        }
         snapshotFlow { state.text.toString() }.collectLatest {
-            if (editing != null) return@collectLatest
             Drafts.set(channelId, it)
             delay(500) // 打つたびに書かないよう、手が止まってから保存する
             Drafts.persist(ctx, channelId)
+        }
+    }
+
+    // 送れなかった本文を戻す (Drafts.failSend)。下書きの記録は戻してあるので、ここでは見えている入力欄に出すだけ。
+    // 編集中は入力欄を触らない (編集を抜けたときに、戻した下書きが出る。#97)
+    val latestEditing by rememberUpdatedState(editing)
+    LaunchedEffect(state) {
+        Drafts.restored.collect { r ->
+            if (r.channelId != channelId) return@collect
+            attachments.addAll(r.attachments)
+            if (latestEditing != null) return@collect
+            // 打った直後の文は、まだ下書きの記録に入っていないことがある (記録は入力欄の変化を後から受け取る) ので、入力欄から作る
+            val restored = Drafts.joinRestored(r.text, state.text.toString())
+            state.setTextAndPlaceCursorAtEnd(restored)
+            Drafts.set(channelId, restored)
+            Drafts.persist(appCtx, channelId)
         }
     }
 
@@ -304,8 +348,7 @@ fun Composer(
             graph.scope.launch(Dispatchers.Main.immediate) {
                 try {
                     graph.api.edit(editing.id, body)
-                    state.setTextAndPlaceCursorAtEnd(Drafts.get(appCtx, channelId))
-                    onCancelEdit()
+                    onCancelEdit() // 入力欄は、編集を抜けたときに下書きへ戻る (上の LaunchedEffect)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) { appCtx.toast(e.userMessage()) } finally { sending = false }
@@ -328,6 +371,8 @@ fun Composer(
         // 送信中にログアウトしたら、後始末 (送信待ち・下書き・ショートカットへの書き込み) をしない。
         // 前のアカウントの本文が残り、次のアカウントで送られるのを防ぐ (ログアウトでストアが作り直される)
         val sessionStore = graph.store
+        // 送信待ちに入れるときのユーザー。押した時点で読む (失敗の後だと、ログアウトで消えていることがある、#74)
+        val sessionUser = sessionStore.me.value?.id ?: graph.prefs.userId
         graph.scope.launch(Dispatchers.Main.immediate) {
             try {
                 val sent = store.send(channelId, body, ids, reply)
@@ -344,18 +389,12 @@ fun Composer(
                 if (graph.store !== sessionStore) return@launch
                 if (Outbox.isNetworkFailure(e)) {
                     // 電波が無いなど。送信待ちに入れ、つながったら送る (#30)
-                    graph.outbox.add(channelId, body, ids, reply)
+                    graph.outbox.add(channelId, body, ids, reply, userId = sessionUser)
                     Drafts.finishSend(appCtx, channelId)
                     appCtx.toast("送信待ちにしました。つながったら送ります")
                 } else {
-                    // 送信中に次の文を打ち始めていたら、消さずに後ろへ残す
-                    val cur = state.text.toString()
-                    val restored = if (cur.isBlank()) keep else "$keep\n$cur"
-                    state.setTextAndPlaceCursorAtEnd(restored)
-                    attachments.addAll(keepAttach)
-                    // 画面を離れていても、次に開いたときに本文が戻るよう下書きにも書く
-                    Drafts.set(channelId, restored)
-                    Drafts.persist(appCtx, channelId)
+                    // 下書きに戻す。送信中に次の文を打ち始めていたら、消さずに後ろへ残す。開いている入力欄にも出る
+                    Drafts.failSend(appCtx, channelId, keep, keepAttach)
                     appCtx.toast("送信できませんでした: ${e.userMessage()}")
                 }
             } finally { sending = false }
@@ -506,7 +545,9 @@ private class ProgressBody(private val inner: okhttp3.RequestBody, private val o
 private fun OutboxBar(channelId: String) {
     val graph = LocalGraph.current
     val all by graph.outbox.items.collectAsStateWithLifecycle()
-    val items = remember(all, channelId) { all.filter { it.channelId == channelId } }
+    val me by LocalStore.current.me.collectAsStateWithLifecycle()
+    // 前のアカウントで入れたものは出さない (送るときにも捨てる、#74)
+    val items = remember(all, channelId, me) { all.filter { it.channelId == channelId && (it.userId == null || me == null || it.userId == me?.id) } }
     if (items.isEmpty()) return
     Column(Modifier.fillMaxWidth().testTag(TestTags.COMPOSER_OUTBOX)) {
         for (item in items) {

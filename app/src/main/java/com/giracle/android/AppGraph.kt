@@ -81,6 +81,8 @@ class AppGraph(context: Context) {
     /** 送信待ちを送る。[only] を指定したらそれだけ (利用者が「今すぐ送る」を選んだとき) */
     fun flushOutbox(only: String? = null) {
         if (_phase.value !is AppPhase.SignedIn || outbox.items.value.isEmpty()) return
+        // 送り直しのきっかけを記録する (e2e の失敗の手がかり、#101)
+        android.util.Log.i("Outbox", "flush requested: items=${outbox.items.value.size} only=${only != null}")
         scope.launch { outbox.flush(outboxSender, only) }
     }
 
@@ -240,6 +242,8 @@ class AppGraph(context: Context) {
             // ログアウトで取り消されていたら、前のユーザーの状態を書き戻さない (取り消しは次の中断点まで効かないため)
             currentCoroutineContext().ensureActive()
             _phase.value = AppPhase.SignedIn(userId, ready = true)
+            // サーバーに届くと分かったので、送信待ちも送る。WebSocket がつながらなくても送れるように (#101)
+            flushOutbox()
             // 開いているチャンネルが前回の内容のまま (圏外で開いて取り直せなかった) なら、ここで最新にする (#82)
             store.refreshOpenChannel()
         } catch (e: ApiException) {

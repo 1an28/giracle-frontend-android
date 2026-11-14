@@ -140,6 +140,35 @@ class ChatStore(
     private fun hist(channelId: String) = histories.getOrPut(channelId) { MutableStateFlow(HistoryState()) }
     private fun lock(channelId: String) = historyLocks.getOrPut(channelId) { Mutex() }
 
+    /**
+     * 履歴を取り直している間に届いた新着 (送信の応答・WebSocket)。取り直しの結果は、取りに行った時点の内容なので、
+     * その後に届いたものを含まない。以前は結果で一覧を置き換え、間に届いたものが消えていた。
+     * 再同期の取り直しの間は「キャッシュから」の印で [addMessage] が足さないので、なおさら見えなくなった (#84)
+     */
+    private val arrivedWhileFetching = java.util.concurrent.ConcurrentHashMap<String, MutableList<Message>>()
+
+    /** 取り直しの間に届いた新着を控え始める */
+    private fun beginFetch(channelId: String) { arrivedWhileFetching[channelId] = java.util.Collections.synchronizedList(mutableListOf()) }
+
+    /**
+     * 取り直しの結果を一覧に入れ、控えを終える。最新側まで取れた結果なら、間に届いた新着のうち一覧に無いものを先頭 (新しい側) に足す。
+     * 先に結果を入れてから控えを外す。逆の順だと、外してから入れるまでの間に届いた新着が、古い一覧に足されて結果で上書きされる (#84 のレビュー)
+     */
+    private fun applyFetched(channelId: String, flow: MutableStateFlow<HistoryState>, state: HistoryState) {
+        flow.value = state
+        if (state.atEnd) {
+            flow.update { s ->
+                // 控えは更新の中で読む (間に削除の知らせが来たら、やり直しで最新の控えを読む)
+                val arrived = arrivedWhileFetching[channelId]?.let { synchronized(it) { it.toList() } }.orEmpty()
+                val ids = s.messages.mapTo(HashSet()) { it.id }
+                val extra = arrived.filter { it.id !in ids }.distinctBy { it.id }
+                // 間に一覧へ直接入った新着もあるので、先頭に付けるだけでなく作成時刻で並べる (同じ時刻は今の順を保つ)
+                if (extra.isEmpty()) s else s.copy(messages = (extra + s.messages).sortedByDescending { it.createdAt }, version = s.version + 1)
+            }
+        }
+        arrivedWhileFetching.remove(channelId)
+    }
+
     // ------------------------------------------------------------------
     // 初期読み込み
     // ------------------------------------------------------------------
@@ -356,17 +385,22 @@ class ChatStore(
         if (flow.value.loaded && !flow.value.fromCache) return
         lock(channelId).withLock {
             if (flow.value.loaded && !flow.value.fromCache) return
-            val readTime = readTimes.value[channelId]
-            val r = api.history(channelId, messageTimeFrom = readTime?.takeIf { it.isNotEmpty() }, fetchLength = 30, direction = "older")
-            mergeSizes(r.imageDimensions)
-            var state = HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1)
-            if (!r.atEnd && r.history.isNotEmpty()) {
-                val newer = api.history(channelId, messageIdFrom = r.history.first().id, fetchLength = 30, direction = "newer")
-                mergeSizes(newer.imageDimensions)
-                state = state.copy(messages = mergeNewer(state.messages, newer.history), atEnd = newer.atEnd)
+            beginFetch(channelId)
+            try {
+                val readTime = readTimes.value[channelId]
+                val r = api.history(channelId, messageTimeFrom = readTime?.takeIf { it.isNotEmpty() }, fetchLength = 30, direction = "older")
+                mergeSizes(r.imageDimensions)
+                var state = HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1)
+                if (!r.atEnd && r.history.isNotEmpty()) {
+                    val newer = api.history(channelId, messageIdFrom = r.history.first().id, fetchLength = 30, direction = "newer")
+                    mergeSizes(newer.imageDimensions)
+                    state = state.copy(messages = mergeNewer(state.messages, newer.history), atEnd = newer.atEnd)
+                }
+                applyFetched(channelId, flow, state)
+                flow.value.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
+            } finally {
+                arrivedWhileFetching.remove(channelId)
             }
-            flow.value = state
-            state.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
         }
     }
 
@@ -390,10 +424,15 @@ class ChatStore(
     suspend fun jumpToLatest(channelId: String) {
         val flow = hist(channelId)
         lock(channelId).withLock {
-            val r = api.history(channelId, fetchLength = 30, direction = "older")
-            mergeSizes(r.imageDimensions)
-            flow.value = HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1)
-            r.history.forEach { ensureUser(it.userId) }
+            beginFetch(channelId)
+            try {
+                val r = api.history(channelId, fetchLength = 30, direction = "older")
+                mergeSizes(r.imageDimensions)
+                applyFetched(channelId, flow, HistoryState(messages = r.history, atTop = r.atTop, atEnd = r.atEnd, loaded = true, version = flow.value.version + 1))
+                flow.value.messages.asSequence().map { it.userId }.distinct().forEach(::ensureUser)
+            } finally {
+                arrivedWhileFetching.remove(channelId)
+            }
         }
     }
 
@@ -641,6 +680,7 @@ class ChatStore(
             "message::MessageDeleted" -> {
                 val id = str(d, "messageId") ?: return
                 val ch = str(d, "channelId") ?: return
+                arrivedWhileFetching[ch]?.removeIf { it.id == id }
                 hist(ch).update { s -> s.copy(messages = s.messages.filterNot { it.id == id }, version = s.version + 1) }
                 inbox.update { l -> l.filterNot { it.message.id == id } }
             }
@@ -768,6 +808,8 @@ class ChatStore(
 
     /** 新着を履歴に入れる。最新側を表示していないチャンネルには入れない (間が抜けるため) */
     fun addMessage(m: Message) {
+        // 取り直しの最中なら控えておく。結果に入っていなければ、取り直しの終わりに足す (#84)
+        arrivedWhileFetching[m.channelId]?.add(m)
         val flow = histories[m.channelId] ?: return
         flow.update { s ->
             // キャッシュには足さない (切れていた間の投稿が抜けたまま、新着だけが続いて見えるため。開いたときに取り直す)
